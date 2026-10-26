@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Checkout – MarketHub</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🏪%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="no-news">
+<div id="site-header"></div>
+<div class="crumbbar"><div class="wrap crumbs"><span><a href="index.html">Home</a> › <a href="cart.html">Shopping Cart</a> › <b>Checkout</b></span><span>Secure checkout</span></div></div>
+
+<main class="wrap" id="ckPage">
+  <div class="steps box" id="steps"></div>
+  <div class="cart-top"><div><h1 class="ptitle">Checkout</h1><p class="sub" id="who"></p></div><a href="cart.html" class="link">← Back to Cart</a></div>
+
+  <div class="ck-layout">
+    <div>
+      <section class="panel" id="secAddr">
+        <div class="ph"><span class="n">1</span><h2>Delivery Address</h2><small>Step 1 of 3</small></div>
+        <div class="pb">
+          <p class="lbl">Choose a saved address</p>
+          <div id="addrList"></div>
+          <button type="button" class="link addbtn" id="addAddr">+ Add a new address</button>
+          <form id="addrForm" class="afrm" hidden novalidate>
+            <input name="name" placeholder="Full name" autocomplete="name">
+            <input name="phone" placeholder="Phone (e.g. 08031234567)" inputmode="tel" autocomplete="tel">
+            <input name="street" class="wide" placeholder="Street address" autocomplete="street-address">
+            <input name="city" placeholder="City (e.g. Lagos)">
+            <input name="state" placeholder="State">
+            <input name="zip" placeholder="Postcode">
+            <div class="wide"><button class="btn mini2">Save address</button> <button type="button" class="lnk" id="cancelAddr">Cancel</button></div>
+          </form>
+          <label class="lbl" for="note">Delivery instructions <span class="mut">(optional)</span></label>
+          <textarea id="note" maxlength="500" rows="3" placeholder="e.g. Call me when you arrive, or leave with security."></textarea>
+          <small class="mut">Max 500 characters. Shared with the delivery rider only. <span id="cnt">0</span>/500</small>
+        </div>
+      </section>
+
+      <section class="panel" id="secShip">
+        <div class="ph"><span class="n">2</span><h2>Delivery Method</h2><small>Step 2 of 3</small></div>
+        <div class="pb">
+          <label class="opt"><input type="radio" name="ship" value="standard" checked>
+            <div class="oh"><b>Standard Delivery</b><b id="pStd"></b></div><small class="mut" id="dStd"></small>
+            <div class="osub">Free for MarketHub Official items — applied at checkout</div></label>
+          <label class="opt"><input type="radio" name="ship" value="express">
+            <div class="oh"><b>Express Delivery</b><b>₦5,500</b></div><small class="mut" id="dExp"></small></label>
+          <label class="opt"><input type="radio" name="ship" value="pickup">
+            <div class="oh"><b>Pickup Station</b><b>Free</b></div><small class="mut">Pick up from a nearby station — 1 business day</small></label>
+          <p class="mut">Choose a pickup station near you <a href="#" class="link" data-soon="Pickup stations coming soon">View stations →</a></p>
+          <div class="info" id="multi" hidden>ⓘ Your order contains items from multiple sellers. Delivery times may vary by seller.</div>
+        </div>
+      </section>
+
+      <section class="panel" id="secPay">
+        <div class="ph"><span class="n">3</span><h2>Payment Method</h2><small>Step 3 of 3</small></div>
+        <div class="pb">
+          <label class="opt"><input type="radio" name="pay" value="card" checked>
+            <div class="oh"><b>Card Payment <span class="tag2">VISA</span><span class="tag2">Mastercard</span><span class="tag2">Verve</span></b><span class="tag rec">RECOMMENDED</span></div>
+            <small class="mut">Pay securely with your debit or credit card</small>
+            <div class="cardform" id="cardForm">
+              <label>Card Number<input id="cn" inputmode="numeric" autocomplete="cc-number" placeholder="1234 5678 9012 3456" maxlength="23"></label>
+              <div class="two"><label>Expiry Date<input id="ce" inputmode="numeric" autocomplete="cc-exp" placeholder="MM/YY" maxlength="5"></label>
+                <label>CVV<input id="cv" inputmode="numeric" autocomplete="cc-csc" placeholder="123" maxlength="4"><small class="mut">3 digits on the back of your card</small></label></div>
+              <label>Name on Card<input id="cname" autocomplete="cc-name" placeholder="As printed on your card"></label>
+              <small class="mut">🔒 Demo only: card details are validated in your browser and never saved or sent anywhere.</small>
+            </div></label>
+          <label class="opt"><input type="radio" name="pay" value="transfer">
+            <div class="oh"><b>Bank Transfer</b><span class="tag">POPULAR</span></div><small class="mut">Transfer to a virtual account — we'll confirm within 5 minutes</small></label>
+          <label class="opt" id="codOpt"><input type="radio" name="pay" value="cod">
+            <div class="oh"><b>Pay on Delivery</b><span class="tag ok2" id="codTag">AVAILABLE</span></div>
+            <small class="mut">Pay with cash or POS when your order arrives</small>
+            <small class="mut" id="codNote">Available in Lagos, Abuja, Port Harcourt. Order value must be under ₦300,000.</small></label>
+        </div>
+      </section>
+
+      <section class="panel pb" id="termsBox">
+        <label class="terms"><input type="checkbox" id="terms"> I have read and agree to MarketHub's <a href="page.html?p=terms" target="_blank" rel="noopener">Terms &amp; Conditions</a> and <a href="page.html?p=privacy" target="_blank" rel="noopener">Privacy Policy</a></label>
+        <button class="btn big-btn" id="place">🔒 Place Order</button>
+        <p class="mut c2">By clicking Place Order, you're confirming your purchase.</p>
+        <a href="cart.html" class="lnk c">← Return to Cart</a>
+      </section>
+    </div>
+    <aside class="summary" id="sum"></aside>
+  </div>
+</main>
+
+<div id="site-footer"></div>
+<script src="js/phones.js"></script>
+<script src="js/accessories.js"></script>
+<script src="js/app.js"></script>
+<script src="js/checkout.js"></script>
+</body>
+</html>
