@@ -1,0 +1,22 @@
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Dependencies / builds (if you add tooling later)
+node_modules/
+dist/
+*.log
+
+# Secrets (never commit these)
+.env
+.env.*
+
+# Test output
+test-results/
+playwright-report/
