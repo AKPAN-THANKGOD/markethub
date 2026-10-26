@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>My Account – MarketHub</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🏪%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="no-news">
+<div id="site-header"></div>
+<div class="crumbbar"><div class="wrap crumbs"><span><a href="index.html">Home</a> › <b>My Account / Sign In</b></span></div></div>
+<main class="wrap">
+  <div id="authView" hidden>
+  <div class="auth">
+    <aside class="auth-side">
+      <h2>Welcome to MarketHub</h2>
+      <p>Nigeria's marketplace for everything you need.</p>
+      <ul><li>🚚 Track every order in one place</li><li>⚡ Faster checkout with saved addresses</li><li>♥ Keep a wishlist across devices</li><li>🏷️ Get member-only deals</li></ul>
+    </aside>
+    <section class="auth-card">
+      <div id="forms">
+        <div class="atabs"><button id="tSign" class="on" data-t="sign">Sign In</button><button id="tReg" data-t="reg">Create Account</button></div>
+
+        <form id="fSign" novalidate>
+          <label>Email address<input name="email" type="email" autocomplete="email" placeholder="you@example.com"></label>
+          <label>Password<span class="pw"><input name="password" type="password" autocomplete="current-password" placeholder="Your password"><button type="button" data-eye>Show</button></span></label>
+          <div class="arow"><label class="chk"><input type="checkbox" name="remember" checked> Remember me</label><a href="#" class="link" data-soon="Password reset needs a backend — coming later">Forgot password?</a></div>
+          <p class="ferr" id="eSign" role="alert"></p>
+          <button class="btn big-btn">Sign In</button>
+          <p class="mut c2">New to MarketHub? <a href="#register" class="link" data-t="reg">Create an account</a></p>
+        </form>
+
+        <form id="fReg" hidden novalidate>
+          <label>Full name<input name="name" autocomplete="name" placeholder="e.g. Chinedu Okafor"></label>
+          <label>Email address<input name="email" type="email" autocomplete="email" placeholder="you@example.com"></label>
+          <label>Phone number<input name="phone" inputmode="tel" autocomplete="tel" placeholder="08031234567"></label>
+          <label>Password<span class="pw"><input name="password" type="password" autocomplete="new-password" placeholder="At least 8 characters, letters and numbers"><button type="button" data-eye>Show</button></span>
+            <span class="meter"><i id="meter"></i></span><small class="mut" id="meterTxt">Use 8+ characters with letters and numbers</small></label>
+          <label>Confirm password<input name="confirm" type="password" autocomplete="new-password" placeholder="Repeat password"></label>
+          <label class="chk"><input type="checkbox" name="terms"> I agree to the <a href="page.html?p=terms" target="_blank" rel="noopener" class="link">Terms</a> and <a href="page.html?p=privacy" target="_blank" rel="noopener" class="link">Privacy Policy</a></label>
+          <p class="ferr" id="eReg" role="alert"></p>
+          <button class="btn big-btn">Create Account</button>
+          <p class="mut c2">Already have an account? <a href="#" class="link" data-t="sign">Sign in</a></p>
+        </form>
+        <p class="demo">🔒 Demo mode: accounts are stored in this browser only. Passwords are salted and hashed, never saved as plain text.</p>
+      </div>
+    </section>
+  </div>
+  </div>
+  <div class="acc-layout" id="accView" hidden>
+    <aside class="acc-nav" id="accNav"></aside>
+    <section id="acc" class="acc-main"></section>
+  </div>
+</main>
+<div id="site-footer"></div>
+<script src="js/phones.js"></script>
+<script src="js/accessories.js"></script>
+<script src="js/app.js"></script>
+<script src="js/login.js"></script>
+<script src="js/account.js"></script>
+</body>
+</html>
