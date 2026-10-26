@@ -1,12 +1,16 @@
 # MarketHub
 
+[![Tests](https://github.com/akpan-thankgod/markethub/actions/workflows/test.yml/badge.svg)](https://github.com/akpan-thankgod/markethub/actions/workflows/test.yml)
+[![Live demo](https://img.shields.io/badge/demo-live-brightgreen)](https://akpan-thankgod.github.io/markethub/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A responsive e-commerce storefront for the Nigerian market, built with plain **HTML, CSS and JavaScript** (no frameworks, no build step).
 Browse products, search and filter, manage a cart, check out, track orders and manage an account.
 
 > **Demo status:** this is a front-end project. Accounts, carts, orders and wishlists are saved in the browser (`localStorage`),
 > and **no real payments are processed**. See [Roadmap](#roadmap) for the planned backend.
 
-**Live demo:** _add your GitHub Pages link here_
+**Live demo:** [akpan-thankgod.github.io/markethub](https://akpan-thankgod.github.io/markethub/)
 
 ![Home page](docs/screenshots/home.png)
 
