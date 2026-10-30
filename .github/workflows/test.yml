@@ -4,8 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:          # lets you run it by hand from the Actions tab
 
 jobs:
+  # 1) The website, tested in a real browser
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -21,6 +23,71 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-report
+          name: e2e-report
+          path: playwright-report/
+          retention-days: 7
+
+  # 2) The PHP + MySQL backend, tested against a real database
+  api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo_mysql
+          coverage: none
+      - name: Check PHP syntax
+        run: find api -name '*.php' -print0 | xargs -0 -n1 php -l
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Point the API at the test database
+        run: |
+          cat > api/config.local.php <<'EOF'
+          <?php
+          return [
+              'db' => ['host' => '127.0.0.1', 'port' => 3306, 'name' => 'markethub', 'user' => 'root', 'pass' => 'root'],
+              'debug' => true,
+              'allowed_origin' => '',
+          ];
+          EOF
+      - name: Create the database and load the products
+        run: |
+          command -v mysql >/dev/null || (sudo apt-get update && sudo apt-get install -y mysql-client)
+          mysql -h 127.0.0.1 -P 3306 -uroot -proot < db/schema.sql
+          mysql -h 127.0.0.1 -P 3306 -uroot -proot markethub < db/seed.sql
+      - name: Start the PHP server
+        run: |
+          nohup php -S localhost:8000 > php-server.log 2>&1 &
+          for i in $(seq 1 30); do curl -fs http://localhost:8000/api/health.php && break || sleep 1; done
+          curl -fs http://localhost:8000/api/health.php
+      - name: Run the API tests
+        run: npx playwright test tests/api.spec.js
+        env:
+          API_BASE: http://localhost:8000
+          API_ONLY: '1'
+      - name: Show the PHP server log
+        if: failure()
+        run: cat php-server.log
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: api-report
           path: playwright-report/
           retention-days: 7

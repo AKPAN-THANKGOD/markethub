@@ -20,3 +20,6 @@ dist/
 # Test output
 test-results/
 playwright-report/
+
+# Backend secrets (never commit real database passwords)
+api/config.local.php
