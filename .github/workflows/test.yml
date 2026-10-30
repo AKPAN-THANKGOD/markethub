@@ -74,6 +74,7 @@ jobs:
           mysql --show-warnings -h 127.0.0.1 -P 3306 -uroot -proot markethub < db/seed.sql
       - name: Check the data really loaded
         run: |
+          echo "seed.sql in the repo: $(wc -c < db/seed.sql) bytes, $(grep -c '^INSERT' db/seed.sql) INSERT statements (expected about 10000 bytes, 4 statements)"
           for t in categories sellers products promo_codes; do
             echo "$t: $(mysql -N -B -h 127.0.0.1 -P 3306 -uroot -proot markethub -e "SELECT COUNT(*) FROM $t" 2>/dev/null)"
           done
