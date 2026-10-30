@@ -75,7 +75,7 @@ test.describe('API (PHP + MySQL)', () => {
 
   test('products: list, filters, single product, unknown id', async () => {
     const all = await (await api.get('/api/products/list.php')).json();
-    expect(all.total).toBeGreaterThanOrEqual(56);
+    expect(all.total, 'products in the database - was db/seed.sql loaded? Response: ' + JSON.stringify(all).slice(0, 200)).toBeGreaterThanOrEqual(56);
     expect(all.items.find(p => p.id === 205).detail.features.length).toBeGreaterThan(3);
     const phones = await (await api.get('/api/products/list.php?c=phones')).json();
     expect(phones.items.length).toBeGreaterThan(20);

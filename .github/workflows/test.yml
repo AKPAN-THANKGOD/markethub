@@ -70,8 +70,14 @@ jobs:
       - name: Create the database and load the products
         run: |
           command -v mysql >/dev/null || (sudo apt-get update && sudo apt-get install -y mysql-client)
-          mysql -h 127.0.0.1 -P 3306 -uroot -proot < db/schema.sql
-          mysql -h 127.0.0.1 -P 3306 -uroot -proot markethub < db/seed.sql
+          mysql --show-warnings -h 127.0.0.1 -P 3306 -uroot -proot < db/schema.sql
+          mysql --show-warnings -h 127.0.0.1 -P 3306 -uroot -proot markethub < db/seed.sql
+      - name: Check the data really loaded
+        run: |
+          for t in categories sellers products promo_codes; do
+            echo "$t: $(mysql -N -B -h 127.0.0.1 -P 3306 -uroot -proot markethub -e "SELECT COUNT(*) FROM $t" 2>/dev/null)"
+          done
+          test "$(mysql -N -B -h 127.0.0.1 -P 3306 -uroot -proot markethub -e 'SELECT COUNT(*) FROM products' 2>/dev/null)" -ge 56
       - name: Start the PHP server
         run: |
           nohup php -S localhost:8000 > php-server.log 2>&1 &
