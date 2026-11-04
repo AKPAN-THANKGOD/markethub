@@ -1,4 +1,5 @@
 /* Category / search / brand listing – category.html?c=phones  ?q=earbuds  ?brand=Apple  (runs after app.js) */
+MH.ready.then(() => {   // wait for the backend check (see app.js), then run
 const num = s => /k$/i.test(s) ? parseFloat(s) * 1000 : parseInt(String(s).replace(/,/g, '')) || 0;
 const sellerFor = p => p.seller || (p.cat === 'home' ? 'Home Essentials Store' : 'MarketHub Official');
 const DATA = PRODUCTS.map(p => { const seller = sellerFor(p);
@@ -95,3 +96,4 @@ document.addEventListener('click', e => {
 if (catName(C)) { const i = $(`[name=cat][value="${C}"]`); if (i && !i.disabled) i.checked = true; }
 if (BR) { brandsOpen = true; drawBrands(); const i = $(`[name=brand][value="${BR}"]`); if (i) i.checked = true; }
 update();
+});

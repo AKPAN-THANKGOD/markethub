@@ -1,3 +1,4 @@
+MH.ready.then(() => {   // wait for the backend check (see app.js), then run
 /* Checkout page – runs after app.js.
    DEMO ONLY: no payment is processed and card details are never stored.
    For real payments use a hosted provider (e.g. Paystack Inline/Checkout) – never handle raw card data yourself. */
@@ -147,3 +148,4 @@ if (!items.length) {
   step(2); renderAddrs(); renderSummary();
   if (!addrs.length) { $('#addrForm').hidden = false; $('#addrForm').elements.namedItem('name').value = USER.name; }   // first order: add an address
 }
+});

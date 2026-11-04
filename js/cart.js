@@ -1,4 +1,5 @@
 /* Cart page – runs after app.js (shares cart, wish, save(), toast(), byId(), fmt(), stars()) */
+MH.ready.then(() => {   // wait for the backend check (see app.js), then run
 const DELIVERY_FEE = 2500;   // per non-official seller
 const PROMOS = { WELCOME10: { flat: 10000 }, SAVE5: { pct: 5 }, NEWUSER: { flat: 5000 } };
 let saved = store.get('mh_saved', []);       // saved-for-later ids
@@ -115,3 +116,4 @@ document.addEventListener('change', e => {
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'promo') $('[data-apply]').click(); });
 
 render();
+});

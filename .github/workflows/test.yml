@@ -81,13 +81,21 @@ jobs:
           test "$(mysql -N -B -h 127.0.0.1 -P 3306 -uroot -proot markethub -e 'SELECT COUNT(*) FROM products' 2>/dev/null)" -ge 56
       - name: Start the PHP server
         run: |
-          nohup php -S localhost:8000 > php-server.log 2>&1 &
+          PHP_CLI_SERVER_WORKERS=4 nohup php -S localhost:8000 > php-server.log 2>&1 &
           for i in $(seq 1 30); do curl -fs http://localhost:8000/api/health.php && break || sleep 1; done
           curl -fs http://localhost:8000/api/health.php
       - name: Run the API tests
         run: npx playwright test tests/api.spec.js
         env:
           API_BASE: http://localhost:8000
+          API_ONLY: '1'
+      - name: Run the browser tests against the real backend
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test tests/e2e.spec.js
+        env:
+          E2E_BASE: http://localhost:8000
+          E2E_EXPECT_MODE: api
           API_ONLY: '1'
       - name: Show the PHP server log
         if: failure()

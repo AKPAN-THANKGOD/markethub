@@ -1,4 +1,5 @@
 /* Product details page – product.html?id=205  (runs after app.js) */
+MH.ready.then(() => {   // wait for the backend check (see app.js), then run
 const id = +(new URLSearchParams(location.search).get('id') || 205);
 const p = byId(id);
 const num = s => /k$/i.test(s) ? parseFloat(s) * 1000 : parseInt(String(s).replace(/,/g, '')) || 0;
@@ -114,3 +115,4 @@ function init() {
   if (shown.length) { $('#recent').innerHTML = shown.map(mini).join(''); $('#recentBox').hidden = false; }
   store.set('mh_recent', [p.id, ...rec.filter(x => x !== p.id)].slice(0, 8));
 }
+});

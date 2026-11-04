@@ -32,7 +32,12 @@ Leave that window open. Then check:
 | http://localhost:8000/api/health.php | `{"ok":true,"php":"8.x","db":true}` |
 | http://localhost:8000/api/products/list.php | JSON with 56 products |
 | http://localhost:8000/api/products/get.php?id=205 | the Oraimo FreePods 4 ANC |
-| http://localhost:8000/index.html | the shop (still using browser storage for now) |
+| http://localhost:8000/index.html | the shop, now using the PHP API for accounts and products (see below) |
+
+## How the site picks the backend
+Every page first calls `api/health.php`. If PHP and the database answer, the site is in **API mode**: accounts (register, sign in, sign out, profile, password) and the product catalogue come from MySQL. If nothing answers (for example on GitHub Pages), it stays in **demo mode** and uses browser storage, exactly as before. Nothing to configure. To check which mode a page is in, open the browser console and type `MH.mode`.
+
+Still in browser storage for now, even in API mode: cart, wishlist, saved addresses and orders (phases 3 and 4).
 
 ## 4. Run the API tests (no browser needed)
 ```
@@ -41,8 +46,8 @@ npx playwright test tests/api.spec.js
 ```
 
 ## Automatic testing on GitHub
-`.github/workflows/test.yml` has two jobs that run on every push: **e2e** (the website in a real browser) and **api** (this backend). The api job starts a fresh MySQL 8 database,
-checks every PHP file for syntax errors, loads `db/schema.sql` and `db/seed.sql`, starts PHP, and runs `tests/api.spec.js`. If it fails, open the run in the repo's **Actions** tab:
+`.github/workflows/test.yml` has two jobs that run on every push: **e2e** (the website in demo mode, in a real browser) and **api** (this backend). The api job starts a fresh MySQL 8 database,
+checks every PHP file for syntax errors, loads `db/schema.sql` and `db/seed.sql`, starts PHP, runs `tests/api.spec.js`, and then runs the whole browser journey (`tests/e2e.spec.js`) against the real PHP + MySQL site. If it fails, open the run in the repo's **Actions** tab:
 the log shows the failing step and the PHP server log is printed at the end.
 
 ## Database login
@@ -63,8 +68,8 @@ By default the API uses XAMPP's defaults (`root`, no password). To change that, 
 | Phase | What | Status |
 |---|---|---|
 | 1 | Database, API foundation, accounts (register/login/logout), product catalogue | ✅ done |
-| 2 | Connect the pages: sign-in and products read from the API (with a switch back to demo mode) | next |
-| 3 | Addresses, wishlist and cart saved on the server | |
+| 2 | Pages use the API: sign-in, register, profile, password and the product catalogue (automatic demo-mode fallback) | ✅ done |
+| 3 | Addresses, wishlist and cart saved on the server | next |
 | 4 | Orders: create, history, tracking with real status; promo codes checked on the server | |
 | 5 | Payments through Paystack's hosted checkout (never handle card numbers yourself) | |
 | 6 | Deploy to a PHP + MySQL host over HTTPS; admin tools for orders and sellers | |

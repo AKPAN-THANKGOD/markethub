@@ -1,4 +1,5 @@
 /* Sign in / register page – runs after app.js (uses Auth, $, $$, toast) */
+MH.ready.then(() => {   // wait for the backend check (see app.js), then run
 const nextParam = new URLSearchParams(location.search).get('next') || '';
 const NEXT = /^[\w-]+\.html(\?[\w=&.-]*)?$/.test(nextParam) ? nextParam : 'account.html';   // same-site pages only
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -69,3 +70,4 @@ $('#fReg').addEventListener('submit', async e => {
 });
 
 showTab(location.hash === '#register' ? 'reg' : 'sign');
+});

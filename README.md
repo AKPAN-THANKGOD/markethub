@@ -60,9 +60,9 @@ On GitHub, [Actions](.github/workflows/test.yml) runs the browser tests **and** 
 
 ## Backend (in progress)
 
-A PHP + MySQL backend is being added in `api/` and `db/`. **Phase 1 is done**: database schema, product catalogue, and accounts
-(register, sign in, sign out) with hashed passwords, CSRF protection and login rate-limiting. The web pages still use browser storage
-until phase 2 connects them. Setup guide and build plan: [docs/backend.md](docs/backend.md).
+A PHP + MySQL backend is being added in `api/` and `db/`. **Phases 1 and 2 are done**: database schema, product catalogue, and accounts
+(register, sign in, sign out, profile, password) with hashed passwords, CSRF protection and login rate-limiting. The pages detect the backend
+automatically and use it for accounts and products; without it (e.g. on GitHub Pages) they fall back to browser-storage demo mode. Cart, wishlist, addresses and orders move to the server in phases 3 and 4. Setup guide and build plan: [docs/backend.md](docs/backend.md).
 
 ## Project structure
 

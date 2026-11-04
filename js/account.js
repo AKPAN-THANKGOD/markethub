@@ -1,4 +1,5 @@
 /* My Account page – runs after app.js. Routes via hash: #overview #orders #orders/<id> #addresses #wishlist #profile */
+MH.ready.then(() => {   // wait for the backend check (see app.js), then run
 const user = Auth.user();   // signed out: the sign-in / register forms (login.js) are shown instead
 $('#authView').hidden = !!user; $('#accView').hidden = !user;
 if (user) initAccount();
@@ -95,7 +96,7 @@ function initAccount() {
       o.items.forEach(i => { if (byId(i.id)) { cart[i.id] = (cart[i.id] || 0) + i.q; ids.push(String(i.id)); } });
       store.set('mh_unsel', store.get('mh_unsel', []).filter(x => !ids.includes(x))); save(); location.href = 'cart.html';
     }
-    else if (d.signout !== undefined) { Auth.logout(); location.href = 'index.html'; }
+    else if (d.signout !== undefined) Auth.logout().then(() => { location.href = 'index.html'; });
     else if (d.newaddr !== undefined) { editing = null; f.reset(); f.hidden = false; f.elements.namedItem('name').value = user.name; }
     else if (d.cancel !== undefined) f.hidden = true;
     else if (d.eaddr) { editing = +d.eaddr; const a = getAddrs().find(x => x.id === editing); ['name', 'phone', 'street', 'city', 'state', 'zip'].forEach(k => f.elements.namedItem(k).value = a[k] || ''); f.hidden = false; f.scrollIntoView({ behavior: 'smooth' }); }
@@ -123,7 +124,9 @@ function initAccount() {
       const m = $('#mProf'), name = v('name'), phone = v('phone'); m.className = 'msg redt';
       if (name.length < 2) return m.textContent = 'Enter your full name.';
       if (!/^[0-9+\s]{10,16}$/.test(phone)) return m.textContent = 'Enter a valid phone number.';
-      Auth.update({ name, phone }); user.name = name; user.phone = phone; toast('Profile updated'); setTimeout(() => location.reload(), 600);
+      const r = await Auth.update({ name, phone });
+      if (r && r.error) return m.textContent = r.error;
+      user.name = name; user.phone = phone; toast('Profile updated'); setTimeout(() => location.reload(), 600);
     } else if (f.id === 'fPass') {
       const m = $('#mPass'), pw = v('pw'); m.className = 'msg redt';
       if (pw.length < 8 || !/[a-z]/i.test(pw) || !/\d/.test(pw)) return m.textContent = 'New password needs 8+ characters with letters and numbers.';
@@ -138,3 +141,4 @@ function initAccount() {
   route();
   setInterval(() => { if (/^#orders|^#overview|^$/.test(location.hash) && !document.querySelector?.('form:not([hidden])')) route(); }, 30000);   // refresh demo tracking
 }
+});

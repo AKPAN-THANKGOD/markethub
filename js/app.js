@@ -175,7 +175,7 @@ document.addEventListener('click', e => {
   else if (d.act === 'all') location.href = 'category.html';
   else if (d.act === 'allcats') location.href = 'category.html';
   else if (d.act === 'account') location.href = 'account.html';
-  else if (d.act === 'logout') { Auth.logout(); toast('Signed out'); setTimeout(() => location.reload(), 700); }
+  else if (d.act === 'logout') Auth.logout().then(() => { toast('Signed out'); setTimeout(() => location.reload(), 700); });
   else if (d.act === 'checkout') toast(cartCount() ? 'Checkout page coming soon' : 'Your cart is empty');
 });
 document.addEventListener('keydown', e => e.key === 'Escape' && toggleDrawer(false));
@@ -221,6 +221,34 @@ function initHome() {
   tick(); setInterval(tick, 1000);
 }
 
+/* ---------- Backend detection: use the PHP API when it is there, otherwise the browser-storage demo ---------- */
+const MH = window.MH = { mode: 'demo', user: null, csrf: '', ready: null };
+async function apiFetch(path, { method = 'GET', body } = {}) {
+  const res = await fetch('api/' + path, {
+    method, credentials: 'same-origin',
+    headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(method !== 'GET' ? { 'X-CSRF-Token': MH.csrf } : {}) },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  let data = null; try { data = await res.json(); } catch {}
+  if (!res.ok) return { error: (data && data.error) || 'Something went wrong. Please try again.', status: res.status };
+  return data || {};
+}
+async function detectBackend() {
+  try {
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 2500);
+    const res = await fetch('api/health.php', { signal: ctl.signal, credentials: 'same-origin' });
+    clearTimeout(timer);
+    const health = await res.json();                    // on GitHub Pages this is an HTML 404 page, so json() throws -> demo mode
+    if (!res.ok || !health.ok) return;
+    const me = await apiFetch('auth/me.php');
+    if (me.error) return;
+    MH.mode = 'api'; MH.user = me.user; MH.csrf = me.csrf;
+    const list = await apiFetch('products/list.php');   // the catalogue comes from MySQL; the bundled data stays as the fallback
+    if (Array.isArray(list.items) && list.items.length) { PRODUCTS.splice(0, PRODUCTS.length, ...list.items); window.EXTRA_PRODUCTS = list.items; }
+  } catch { /* no backend: stay in demo mode */ }
+}
+MH.ready = detectBackend();   // every page waits for this before it draws anything
+
 /* ---------- Auth (DEMO: accounts live in this browser's localStorage; passwords are salted + PBKDF2-hashed) ---------- */
 const Auth = {
   esc: s => String(s).replace(/[&<>"']/g, c => '&#' + c.charCodeAt(0) + ';'),
@@ -228,13 +256,18 @@ const Auth = {
   session() {
     try { return JSON.parse(sessionStorage.getItem('mh_session') || localStorage.getItem('mh_session') || 'null'); } catch { return null; }
   },
-  user() { const s = Auth.session(); return (s && Auth.users().find(u => u.email === s.email)) || null; },
+  user() { if (MH.mode === 'api') return MH.user; const s = Auth.session(); return (s && Auth.users().find(u => u.email === s.email)) || null; },
   async hash(pw, salt) {
     const enc = new TextEncoder(), k = await crypto.subtle.importKey('raw', enc.encode(pw), 'PBKDF2', false, ['deriveBits']);
     const b = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: enc.encode(salt), iterations: 100000, hash: 'SHA-256' }, k, 256);
     return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('');
   },
   async register({ name, email, phone, password }) {
+    if (MH.mode === 'api') {
+      const r = await apiFetch('auth/register.php', { method: 'POST', body: { name, email, phone, password } });
+      if (r.error) return { error: r.error };
+      MH.user = r.user; MH.csrf = r.csrf; return { ok: true };
+    }
     email = email.trim().toLowerCase();
     if (Auth.users().some(u => u.email === email)) return { error: 'An account with this email already exists.' };
     const salt = [...crypto.getRandomValues(new Uint8Array(16))].map(x => x.toString(16).padStart(2, '0')).join('');
@@ -244,6 +277,11 @@ const Auth = {
     return { ok: true };
   },
   async login(email, password, remember) {
+    if (MH.mode === 'api') {
+      const r = await apiFetch('auth/login.php', { method: 'POST', body: { email, password } });
+      if (r.error) return { error: r.error };
+      MH.user = r.user; MH.csrf = r.csrf; return { ok: true };
+    }
     const u = Auth.users().find(x => x.email === email.trim().toLowerCase());
     if (!u || await Auth.hash(password, u.salt) !== u.hash) return { error: 'Incorrect email or password.' };
     Auth.start(u, remember);
@@ -253,12 +291,28 @@ const Auth = {
     Auth.logout();
     try { (remember ? localStorage : sessionStorage).setItem('mh_session', JSON.stringify({ email: u.email })); } catch {}
   },
-  logout() { try { sessionStorage.removeItem('mh_session'); localStorage.removeItem('mh_session'); } catch {} },
-  update(fields) {
+  async logout() {
+    if (MH.mode === 'api') {
+      await apiFetch('auth/logout.php', { method: 'POST' });
+      MH.user = null; MH.csrf = (await apiFetch('auth/me.php')).csrf || '';   // the old session is gone, so fetch a fresh token
+      return;
+    }
+    try { sessionStorage.removeItem('mh_session'); localStorage.removeItem('mh_session'); } catch {}
+  },
+  async update(fields) {
+    if (MH.mode === 'api') {
+      const r = await apiFetch('auth/update.php', { method: 'POST', body: fields });
+      if (r.error) return { error: r.error };
+      MH.user = r.user; return { ok: true };
+    }
     const all = Auth.users(), u = all.find(x => x.email === Auth.session()?.email);
     if (u) { Object.assign(u, fields); store.set('mh_users', all); }
   },
   async changePassword(oldPw, newPw) {
+    if (MH.mode === 'api') {
+      const r = await apiFetch('auth/password.php', { method: 'POST', body: { old: oldPw, password: newPw } });
+      return r.error ? { error: r.error } : { ok: true };
+    }
     const u = Auth.user();
     if (!u || await Auth.hash(oldPw, u.salt) !== u.hash) return { error: 'Current password is incorrect.' };
     const salt = [...crypto.getRandomValues(new Uint8Array(16))].map(x => x.toString(16).padStart(2, '0')).join('');
@@ -274,7 +328,9 @@ function enhance() {
   window.addEventListener?.('scroll', () => { b.hidden = window.scrollY < 600; }, { passive: true });
   b.onclick = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 }
-mountShell();
-enhance();
-updateBadges();
-if ($('#home')) initHome();
+MH.ready.then(() => {
+  mountShell();
+  enhance();
+  updateBadges();
+  if ($('#home')) initHome();
+});

@@ -1,4 +1,5 @@
 /* Static pages (Help, FAQ, About, Terms, Privacy, Track, Contact). Each HTML file sets <body data-page="..."> */
+MH.ready.then(() => {   // wait for the backend check (see app.js), then run
 const esc = Auth.esc;
 const qa = ([q, a]) => `<details class="qa"><summary>${q}</summary><p>${a}</p></details>`;
 const hero = (t, s) => `<div class="phero"><h1>${t}</h1><p>${s}</p></div>`;
@@ -144,4 +145,5 @@ $('#slForm')?.addEventListener('submit', e => {
   if (!f.elements.namedItem('terms').checked) return err.textContent = 'Please accept the Seller Policies.';
   store.set('mh_sellers', [{ biz: v('biz'), owner: v('owner'), email: v('email'), phone: v('phone'), cat: v('cat'), city: v('city'), about: v('about'), date: new Date().toISOString() }, ...store.get('mh_sellers', [])]);
   f.outerHTML = '<div class="box empty2"><div class="big">✅</div><h2>Application received</h2><p>Thanks! We will review it and contact you by email.</p><a href="index.html" class="btn">Back to Home</a></div>';
+});
 });

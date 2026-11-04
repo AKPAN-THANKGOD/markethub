@@ -2,7 +2,7 @@
 // The tests share ONE browser context and run in order: register → shop → checkout → account.
 const { test, expect } = require('@playwright/test');
 
-const BASE = 'http://localhost:5500';
+const BASE = process.env.E2E_BASE || 'http://localhost:5500';   // set E2E_BASE (+ E2E_EXPECT_MODE=api) to run the same journey against the PHP backend
 const USER = { name: 'Test Shopper', email: 'shopper@example.com', phone: '08031234567', pw: 'Passw0rd!1', pw2: 'N3wPassw0rd!' };
 let ctx, page, errors = [];
 
@@ -17,13 +17,17 @@ test.beforeAll(async ({ browser }) => {
     if (m.type() !== 'error') return;
     const u = m.location().url || '';
     if (u && !u.startsWith(BASE)) return;                                  // ignore Google Fonts etc.
+    if (/\/api\/auth\/(login|password)\.php$/.test(u)) return;               // a wrong password is meant to be refused (401)
     errors.push('console: ' + m.text());
   });
-  page.on('response', r => { if (r.url().startsWith(BASE) && r.status() >= 400) errors.push(`HTTP ${r.status()}: ${r.url()}`); });
+  page.on('response', r => {
+    if (/\/api\/auth\/(login|password)\.php$/.test(r.url()) && r.status() === 401) return;   // expected in the wrong-password tests
+    if (r.url().startsWith(BASE) && r.status() >= 400) errors.push(`HTTP ${r.status()}: ${r.url()}`);
+  });
 });
 test.afterAll(async () => { await ctx.close(); });
 
-const go = u => page.goto(BASE + '/' + u);
+const go = async u => { await page.goto(BASE + '/' + u); await page.locator('#site-header .head').waitFor(); };   // the page draws itself once the backend check is done
 const naira = t => +(t.replace(/[^\d]/g, '') || 0);
 const prices = async () => (await page.locator('#pgrid .card .price').allTextContents()).map(t => naira(t.split('₦')[1]));
 const noErrors = () => { const e = errors.splice(0); expect(e, e.join('\n')).toEqual([]); };
@@ -32,6 +36,12 @@ const signIn = async (email, pw) => {
   await page.fill('#fSign input[name=email]', email); await page.fill('#fSign input[name=password]', pw);
   await page.click('#fSign button.btn');
 };
+
+test('0. runs in the expected mode (demo storage or real backend)', async () => {
+  await go('index.html');
+  expect(await page.evaluate(() => window.MH.mode)).toBe(process.env.E2E_EXPECT_MODE || 'demo');   // stops a silent fallback to demo mode passing as a backend test
+  noErrors();
+});
 
 test('1. every page loads without errors', async () => {
   const urls = ['index.html', 'category.html', 'category.html?c=phones', 'category.html?q=earbuds', 'category.html?brand=Apple', 'product.html?id=205', 'product.html?id=101',
@@ -192,7 +202,7 @@ test('9. account: orders, tracking timeline, reorder, track page', async () => {
   await expect(page.locator('.tl > div')).toHaveCount(4);
   await expect(page.locator('#acc')).toContainText('Binatone');
   await page.click('[data-reorder]');
-  await expect(page).toHaveURL(/cart\.html/); expect(await page.locator('.ci2').count()).toBe(2);
+  await expect(page).toHaveURL(/cart\.html/); await expect(page.locator('.ci2')).toHaveCount(2);   // waits for the page to draw
   const id = await page.evaluate(() => JSON.parse(localStorage.getItem('mh_orders'))[0].id);
   await go('page.html?p=track');
   await page.fill('#trkForm input[name=id]', 'MH00000000'); await page.click('#trkForm button.btn'); await expect(page.locator('#trkErr')).toContainText("couldn't find");
@@ -270,6 +280,7 @@ test('14. accessibility basics: skip link, page titles, signed-out guard', async
   await expect(page.locator('a.skip')).toBeFocused();
   for (const u of ['category.html?c=home', 'product.html?id=205', 'cart.html', 'page.html?p=terms']) { await go(u); expect((await page.title()).length).toBeGreaterThan(10); }
   await page.click('[data-act="logout"]');
+  await expect(page.locator('#toast')).toContainText('Signed out');   // wait until the sign-out has finished
   await go('checkout.html'); await expect(page).toHaveURL(/account\.html\?next=checkout\.html/);
   noErrors();
 });

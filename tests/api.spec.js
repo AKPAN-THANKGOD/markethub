@@ -66,6 +66,23 @@ test.describe('API (PHP + MySQL)', () => {
     expect((await (await api.get('/api/auth/me.php')).json()).user.email).toBe(user.email);
   });
 
+  test('profile and password: need sign-in; update name/phone; change password', async () => {
+    // currently signed in from the login test
+    const up = await post('/api/auth/update.php', { name: 'Api Tester Jr', phone: '08099998888' });
+    expect(up.status(), await up.text()).toBe(200);
+    expect((await up.json()).user).toMatchObject({ name: 'Api Tester Jr', phone: '08099998888' });
+    expect((await post('/api/auth/update.php', { name: 'X', phone: '08099998888' })).status()).toBe(422);
+    expect((await post('/api/auth/password.php', { old: 'WrongOld1', password: 'N3wPassw0rd!' })).status()).toBe(401);
+    expect((await post('/api/auth/password.php', { old: user.password, password: 'short' })).status()).toBe(422);
+    const ch = await post('/api/auth/password.php', { old: user.password, password: 'N3wPassw0rd!' });
+    expect(ch.status(), await ch.text()).toBe(200);
+    await post('/api/auth/logout.php', {}); await freshToken();
+    expect((await post('/api/auth/update.php', { name: 'Anyone', phone: '08099998888' })).status()).toBe(401);   // signed out
+    expect((await post('/api/auth/login.php', { email: user.email, password: user.password })).status()).toBe(401);   // old password no longer works
+    const ok = await post('/api/auth/login.php', { email: user.email, password: 'N3wPassw0rd!' });
+    expect(ok.status(), await ok.text()).toBe(200); csrf = (await ok.json()).csrf;
+  });
+
   test('login: locks an email after 5 failed attempts', async () => {
     await freshToken();
     const email = `lock${stamp}@example.com`;
