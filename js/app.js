@@ -46,7 +46,7 @@ const byId = id => PRODUCTS.find(p => p.id == id);
 let cart = store.get('mh_cart', {});       // {id: qty}
 let wish = store.get('mh_wish', []);       // [id]
 const cartCount = () => Object.values(cart).reduce((a, b) => a + b, 0);
-const save = () => { store.set('mh_cart', cart); store.set('mh_wish', wish); updateBadges(); };
+const save = () => { store.set('mh_cart', cart); store.set('mh_wish', wish); updateBadges(); pushUserData(); };   // pushUserData: saves to the account in API mode
 
 function toast(msg) {
   const t = $('#toast'); t.textContent = msg; t.classList.add('show');
@@ -223,9 +223,9 @@ function initHome() {
 
 /* ---------- Backend detection: use the PHP API when it is there, otherwise the browser-storage demo ---------- */
 const MH = window.MH = { mode: 'demo', user: null, csrf: '', ready: null };
-async function apiFetch(path, { method = 'GET', body } = {}) {
+async function apiFetch(path, { method = 'GET', body, keepalive = false } = {}) {
   const res = await fetch('api/' + path, {
-    method, credentials: 'same-origin',
+    method, credentials: 'same-origin', keepalive,
     headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(method !== 'GET' ? { 'X-CSRF-Token': MH.csrf } : {}) },
     body: body ? JSON.stringify(body) : undefined
   });
@@ -245,8 +245,78 @@ async function detectBackend() {
     MH.mode = 'api'; MH.user = me.user; MH.csrf = me.csrf;
     const list = await apiFetch('products/list.php');   // the catalogue comes from MySQL; the bundled data stays as the fallback
     if (Array.isArray(list.items) && list.items.length) { PRODUCTS.splice(0, PRODUCTS.length, ...list.items); window.EXTRA_PRODUCTS = list.items; }
+    await syncUserData();                               // signed in: load this account's cart and wishlist
   } catch { /* no backend: stay in demo mode */ }
 }
+/* ---------- Cart & wishlist: browser storage for guests, saved to the account when signed in (API mode) ---------- */
+const OWNER_KEY = 'mh_owner';       // whose cart the browser copy belongs to ('' = a guest)
+let cartPushing = false, cartDirty = false;
+const cartPayload = () => {
+  const unsel = store.get('mh_unsel', []).map(String), vars = store.get('mh_var', {});
+  return { items: Object.keys(cart).filter(id => byId(id)).map(id => ({ id: +id, qty: cart[id], selected: !unsel.includes(id), variant: vars[id] || null })) };
+};
+const wishPayload = () => ({ ids: wish.filter(id => byId(id)) });
+const flag = v => { try { v ? sessionStorage.setItem('mh_dirty', '1') : sessionStorage.removeItem('mh_dirty'); } catch {} };
+async function pushUserData() {
+  if (MH.mode !== 'api' || !MH.user) return;                  // guests and demo mode only use browser storage
+  flag(true);                                                  // if a page change interrupts the save, the next page finishes it
+  if (cartPushing) { cartDirty = true; return; }               // one save at a time; the newest state is sent right after
+  cartPushing = true;
+  try {
+    do {
+      cartDirty = false;
+      await Promise.all([apiFetch('cart/save.php', { method: 'POST', body: cartPayload(), keepalive: true }),
+                         apiFetch('wishlist/save.php', { method: 'POST', body: wishPayload(), keepalive: true })]);
+    } while (cartDirty);
+    flag(false);
+  } finally { cartPushing = false; }
+}
+function applyUserData(items, ids) {
+  cart = {}; const unsel = [], vars = {};
+  items.forEach(i => { const id = String(i.id); cart[id] = i.qty; if (!i.selected) unsel.push(id); if (i.variant) vars[id] = i.variant; });
+  wish = ids.slice();
+  store.set('mh_cart', cart); store.set('mh_wish', wish); store.set('mh_unsel', unsel); store.set('mh_var', vars);
+}
+function clearUserData() {       // sign-out: the next person on this browser must not see this account's cart
+  cart = {}; wish = [];
+  store.set('mh_cart', {}); store.set('mh_wish', []); store.set('mh_unsel', []); store.set('mh_var', {});
+  try { localStorage.removeItem(OWNER_KEY); } catch {}
+  flag(false);
+}
+async function syncUserData() {
+  if (MH.mode !== 'api') return;
+  let owner = ''; try { owner = localStorage.getItem(OWNER_KEY) || ''; } catch {}
+  if (!MH.user) { if (owner) clearUserData(); return; }                       // signed out: drop what a previous account left behind
+  const uid = String(MH.user.id);
+  let dirty = false; try { dirty = sessionStorage.getItem('mh_dirty') === '1'; } catch {}
+  if (owner === uid && dirty) { await pushUserData(); return; }               // finish a save that a page change interrupted
+  const [c, w] = await Promise.all([apiFetch('cart/get.php'), apiFetch('wishlist/get.php')]);
+  if (c.error || w.error) return;                                              // keep what is in memory
+  const items = c.items, ids = w.ids; let changed = false;
+  if (owner === '') {                                                          // guest data from before signing in: merge it into the account
+    const unsel = store.get('mh_unsel', []).map(String), vars = store.get('mh_var', {});
+    Object.keys(cart).forEach(id => {
+      if (!byId(id)) return;
+      const hit = items.find(i => String(i.id) === id);
+      if (hit) hit.qty = Math.min(99, hit.qty + cart[id]);
+      else items.push({ id: +id, qty: cart[id], selected: !unsel.includes(id), variant: vars[id] || null });
+      changed = true;
+    });
+    wish.forEach(id => { if (byId(id) && !ids.includes(id)) { ids.push(id); changed = true; } });
+  }                                                                            // (data left by a different account is ignored)
+  applyUserData(items, ids);
+  try { localStorage.setItem(OWNER_KEY, uid); } catch {}
+  flag(false);
+  if (changed) await pushUserData();
+}
+window.addEventListener('pagehide', () => {      // a page change in the middle of a save: send the newest state now
+  if (cartDirty && MH.mode === 'api' && MH.user) {
+    cartDirty = false;
+    apiFetch('cart/save.php', { method: 'POST', body: cartPayload(), keepalive: true });
+    apiFetch('wishlist/save.php', { method: 'POST', body: wishPayload(), keepalive: true });
+  }
+});
+
 MH.ready = detectBackend();   // every page waits for this before it draws anything
 
 /* ---------- Auth (DEMO: accounts live in this browser's localStorage; passwords are salted + PBKDF2-hashed) ---------- */
@@ -266,7 +336,7 @@ const Auth = {
     if (MH.mode === 'api') {
       const r = await apiFetch('auth/register.php', { method: 'POST', body: { name, email, phone, password } });
       if (r.error) return { error: r.error };
-      MH.user = r.user; MH.csrf = r.csrf; return { ok: true };
+      MH.user = r.user; MH.csrf = r.csrf; await syncUserData(); return { ok: true };
     }
     email = email.trim().toLowerCase();
     if (Auth.users().some(u => u.email === email)) return { error: 'An account with this email already exists.' };
@@ -280,7 +350,7 @@ const Auth = {
     if (MH.mode === 'api') {
       const r = await apiFetch('auth/login.php', { method: 'POST', body: { email, password } });
       if (r.error) return { error: r.error };
-      MH.user = r.user; MH.csrf = r.csrf; return { ok: true };
+      MH.user = r.user; MH.csrf = r.csrf; await syncUserData(); return { ok: true };
     }
     const u = Auth.users().find(x => x.email === email.trim().toLowerCase());
     if (!u || await Auth.hash(password, u.salt) !== u.hash) return { error: 'Incorrect email or password.' };
@@ -294,7 +364,7 @@ const Auth = {
   async logout() {
     if (MH.mode === 'api') {
       await apiFetch('auth/logout.php', { method: 'POST' });
-      MH.user = null; MH.csrf = (await apiFetch('auth/me.php')).csrf || '';   // the old session is gone, so fetch a fresh token
+      MH.user = null; clearUserData(); MH.csrf = (await apiFetch('auth/me.php')).csrf || '';   // the old session is gone, so fetch a fresh token
       return;
     }
     try { sessionStorage.removeItem('mh_session'); localStorage.removeItem('mh_session'); } catch {}
@@ -318,6 +388,32 @@ const Auth = {
     const salt = [...crypto.getRandomValues(new Uint8Array(16))].map(x => x.toString(16).padStart(2, '0')).join('');
     Auth.update({ salt, hash: await Auth.hash(newPw, salt) });
     return { ok: true };
+  }
+};
+
+/* ---------- Saved addresses: browser storage (demo) or the account (API mode). Every call returns { items } or { error } ---------- */
+const Addr = {
+  key: () => 'mh_addr_' + (Auth.user() ? Auth.user().id : 0),
+  async list() {
+    if (MH.mode === 'api') return (await apiFetch('addresses/list.php')).items || [];
+    return store.get(Addr.key(), []);
+  },
+  async save(a) {                                   // a.id set = edit that address; otherwise add a new one
+    if (MH.mode === 'api') { const r = await apiFetch('addresses/save.php', { method: 'POST', body: a }); return r.error ? { error: r.error } : { items: r.items, id: r.id }; }
+    const as = store.get(Addr.key(), []); let id = a.id;
+    if (id) Object.assign(as.find(x => x.id === id), a); else { id = Date.now(); as.push({ ...a, id, def: !as.length }); }
+    store.set(Addr.key(), as); return { items: as, id };
+  },
+  async remove(id) {
+    if (MH.mode === 'api') { const r = await apiFetch('addresses/delete.php', { method: 'POST', body: { id } }); return r.error ? { error: r.error } : { items: r.items }; }
+    const as = store.get(Addr.key(), []).filter(a => a.id !== id);
+    if (as.length && !as.some(a => a.def)) as[0].def = true;
+    store.set(Addr.key(), as); return { items: as };
+  },
+  async setDefault(id) {
+    if (MH.mode === 'api') { const r = await apiFetch('addresses/default.php', { method: 'POST', body: { id } }); return r.error ? { error: r.error } : { items: r.items }; }
+    const as = store.get(Addr.key(), []).map(a => ({ ...a, def: a.id === id }));
+    store.set(Addr.key(), as); return { items: as };
   }
 };
 

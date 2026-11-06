@@ -37,7 +37,9 @@ Leave that window open. Then check:
 ## How the site picks the backend
 Every page first calls `api/health.php`. If PHP and the database answer, the site is in **API mode**: accounts (register, sign in, sign out, profile, password) and the product catalogue come from MySQL. If nothing answers (for example on GitHub Pages), it stays in **demo mode** and uses browser storage, exactly as before. Nothing to configure. To check which mode a page is in, open the browser console and type `MH.mode`.
 
-Still in browser storage for now, even in API mode: cart, wishlist, saved addresses and orders (phases 3 and 4).
+**Signed in, in API mode**, the cart (with ticked items and chosen colour/style), the wishlist and saved addresses live in your account, so they follow you to any browser or phone. Guests keep using browser storage, and when a guest signs in their cart and wishlist are merged into the account. On sign-out the browser copy is cleared so the next person doesn't see it.
+
+Still in browser storage, even in API mode: "Saved for later" items and orders (orders move to the server in phase 4).
 
 ## 4. Run the API tests (no browser needed)
 ```
@@ -69,7 +71,7 @@ By default the API uses XAMPP's defaults (`root`, no password). To change that, 
 |---|---|---|
 | 1 | Database, API foundation, accounts (register/login/logout), product catalogue | ✅ done |
 | 2 | Pages use the API: sign-in, register, profile, password and the product catalogue (automatic demo-mode fallback) | ✅ done |
-| 3 | Addresses, wishlist and cart saved on the server | next |
-| 4 | Orders: create, history, tracking with real status; promo codes checked on the server | |
+| 3 | Cart, wishlist and addresses saved on the server (guest cart merges on sign-in) | ✅ done |
+| 4 | Orders: create, history, tracking with real status; prices and promo codes calculated on the server | next |
 | 5 | Payments through Paystack's hosted checkout (never handle card numbers yourself) | |
 | 6 | Deploy to a PHP + MySQL host over HTTPS; admin tools for orders and sellers | |

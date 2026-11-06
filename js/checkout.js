@@ -1,4 +1,4 @@
-MH.ready.then(() => {   // wait for the backend check (see app.js), then run
+MH.ready.then(async () => {   // wait for the backend check (see app.js), then run
 /* Checkout page – runs after app.js.
    DEMO ONLY: no payment is processed and card details are never stored.
    For real payments use a hosted provider (e.g. Paystack Inline/Checkout) – never handle raw card data yourself. */
@@ -12,8 +12,7 @@ const sellerOf = p => p.seller || (p.cat === 'home' ? 'Home Essentials Store' : 
 const unsel = store.get('mh_unsel', []);
 const items = Object.keys(cart).filter(id => byId(id) && !unsel.includes(id)).map(id => ({ p: byId(id), q: cart[id] }));
 let promo = store.get('mh_promo', ''), promoMsg = '', editing = null;
-const AKEY = 'mh_addr_' + USER.id;
-let addrs = store.get(AKEY, []);
+let addrs = await Addr.list();
 const sel = { addr: (addrs.find(a => a.def) || addrs[0] || {}).id, ship: 'standard', pay: 'card' };
 
 /* ---- helpers ---- */
@@ -132,14 +131,15 @@ document.addEventListener('click', e => {
   }
   else if (c.id === 'place') placeOrder();
 });
-$('#addrForm').addEventListener('submit', e => {
+$('#addrForm').addEventListener('submit', async e => {
   e.preventDefault();
   const f = e.target, v = Object.fromEntries(['name', 'phone', 'street', 'city', 'state', 'zip'].map(k => [k, f.elements[k].value.trim()]));
   if (!v.name || !v.street || !v.city) return toast('Name, street and city are required');
   if (!/^[0-9+\s]{10,16}$/.test(v.phone)) return toast('Enter a valid phone number');
-  if (editing) Object.assign(addrs.find(a => a.id === editing), v);
-  else { const a = { id: Date.now(), ...v, def: !addrs.length }; addrs.push(a); sel.addr = a.id; }
-  store.set(AKEY, addrs); f.hidden = true; renderAddrs(); renderSummary();
+  const r = await Addr.save(editing ? { id: editing, ...v } : v);
+  if (r.error) return toast(r.error);
+  addrs = r.items; if (!editing) sel.addr = r.id;
+  f.hidden = true; renderAddrs(); renderSummary();
 });
 
 if (!items.length) {

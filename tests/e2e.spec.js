@@ -268,7 +268,7 @@ test('12. info pages: FAQ search, contact, seller application', async () => {
 test('13. responsive: no sideways scrolling on a phone', async () => {
   await page.setViewportSize({ width: 375, height: 800 });
   for (const u of ['index.html', 'category.html', 'product.html?id=205', 'cart.html', 'account.html#orders', 'page.html?p=help']) {
-    await go(u);
+    await go(u); await page.waitForLoadState('networkidle');
     const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(over, `${u} scrolls sideways by ${over}px`).toBeLessThanOrEqual(1);
   }
@@ -283,4 +283,16 @@ test('14. accessibility basics: skip link, page titles, signed-out guard', async
   await expect(page.locator('#toast')).toContainText('Signed out');   // wait until the sign-out has finished
   await go('checkout.html'); await expect(page).toHaveURL(/account\.html\?next=checkout\.html/);
   noErrors();
+});
+
+test('15. real backend only: the cart, wishlist and addresses follow the account to a brand-new browser', async ({ browser }) => {
+  test.skip(process.env.E2E_EXPECT_MODE !== 'api', 'needs the PHP backend');
+  const ctx2 = await browser.newContext(), p2 = await ctx2.newPage();       // empty browser: no storage from the earlier tests
+  await p2.goto(BASE + '/account.html'); await p2.locator('#site-header .head').waitFor();
+  await p2.fill('#fSign input[name=email]', USER.email); await p2.fill('#fSign input[name=password]', USER.pw2); await p2.click('#fSign button.btn');
+  await expect(p2.locator('#acc h1')).toContainText('Hi, Test');
+  await expect(p2.locator('#cBadge')).not.toHaveText('0');                    // the cart arrived from the server
+  await p2.goto(BASE + '/cart.html'); await expect(p2.locator('.ci2').first()).toBeVisible();
+  await p2.goto(BASE + '/account.html#addresses'); await expect(p2.locator('.addr2')).toHaveCount(1);
+  await ctx2.close();
 });

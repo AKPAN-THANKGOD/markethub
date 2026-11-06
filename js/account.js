@@ -5,9 +5,10 @@ $('#authView').hidden = !!user; $('#accView').hidden = !user;
 if (user) initAccount();
 
 function initAccount() {
-  const esc = Auth.esc, AKEY = 'mh_addr_' + user.id;
+  const esc = Auth.esc;
   const myOrders = () => store.get('mh_orders', []).filter(o => o.user === user.email);
-  const getAddrs = () => store.get(AKEY, []);
+  let ADDRS = [];                      // loaded by route() before each draw
+  const getAddrs = () => ADDRS;
   const date = d => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   const TABS = [['overview', '🏠', 'Overview'], ['orders', '📦', 'My Orders'], ['addresses', '📍', 'Addresses'], ['wishlist', '♥', 'Wishlist'], ['profile', '👤', 'Profile & Security']];
   // DEMO tracking: minutes after ordering that each stage is reached. Replace with real status from your backend.
@@ -76,7 +77,8 @@ function initAccount() {
   }
 
   /* ---------- router ---------- */
-  function route() {
+  async function route() {
+    ADDRS = await Addr.list();
     const [tab, arg] = (location.hash.slice(1) || 'overview').split('/');
     const active = views[tab] ? tab : 'overview';
     $('#accNav').innerHTML = `<div class="who"><span class="av">${esc(user.name[0].toUpperCase())}</span><div><b>${esc(user.name)}</b><small class="mut">${esc(user.email)}</small></div></div>` +
@@ -87,7 +89,7 @@ function initAccount() {
   window.addEventListener('hashchange', route);
 
   /* ---------- actions ---------- */
-  document.addEventListener('click', e => {
+  document.addEventListener('click', async e => {
     const c = e.target.closest('[data-reorder],[data-newaddr],[data-cancel],[data-eaddr],[data-defaddr],[data-deladdr],[data-wmove],[data-wrm],[data-signout]');
     if (!c) return;
     const d = c.dataset, f = $('#afrm');
@@ -100,11 +102,11 @@ function initAccount() {
     else if (d.newaddr !== undefined) { editing = null; f.reset(); f.hidden = false; f.elements.namedItem('name').value = user.name; }
     else if (d.cancel !== undefined) f.hidden = true;
     else if (d.eaddr) { editing = +d.eaddr; const a = getAddrs().find(x => x.id === editing); ['name', 'phone', 'street', 'city', 'state', 'zip'].forEach(k => f.elements.namedItem(k).value = a[k] || ''); f.hidden = false; f.scrollIntoView({ behavior: 'smooth' }); }
-    else if (d.defaddr) { store.set(AKEY, getAddrs().map(a => ({ ...a, def: a.id === +d.defaddr }))); route(); toast('Default address updated'); }
+    else if (d.defaddr) { const r = await Addr.setDefault(+d.defaddr); if (r.error) return toast(r.error); await route(); toast('Default address updated'); }
     else if (d.deladdr) {
       if (!confirm('Delete this address?')) return;
-      let as = getAddrs().filter(a => a.id !== +d.deladdr); if (as.length && !as.some(a => a.def)) as[0].def = true;
-      store.set(AKEY, as); route();
+      const r = await Addr.remove(+d.deladdr); if (r.error) return toast(r.error);
+      await route();
     }
     else if (d.wmove) { wish = wish.filter(x => x !== +d.wmove); cart[d.wmove] = (cart[d.wmove] || 0) + 1; save(); route(); toast('Moved to cart ✔'); }
     else if (d.wrm) { wish = wish.filter(x => x !== +d.wrm); save(); route(); }
@@ -117,9 +119,9 @@ function initAccount() {
       const a = Object.fromEntries(['name', 'phone', 'street', 'city', 'state', 'zip'].map(k => [k, v(k)]));
       if (!a.name || !a.street || !a.city) return toast('Name, street and city are required');
       if (!/^[0-9+\s]{10,16}$/.test(a.phone)) return toast('Enter a valid phone number');
-      const as = getAddrs();
-      if (editing) Object.assign(as.find(x => x.id === editing), a); else as.push({ id: Date.now(), ...a, def: !as.length });
-      store.set(AKEY, as); route(); toast('Address saved');
+      const r = await Addr.save(editing ? { id: editing, ...a } : a);
+      if (r.error) return toast(r.error);
+      await route(); toast('Address saved');
     } else if (f.id === 'fProf') {
       const m = $('#mProf'), name = v('name'), phone = v('phone'); m.className = 'msg redt';
       if (name.length < 2) return m.textContent = 'Enter your full name.';
