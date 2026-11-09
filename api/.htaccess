@@ -1,0 +1,4 @@
+# Apache only (ignored by PHP's built-in server): never serve config or library files
+<FilesMatch "^config.*\.php$">
+    Require all denied
+</FilesMatch>
