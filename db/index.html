@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MarketHub – Shop Everything</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🏪%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="site-header"></div>
+
+<main class="wrap">
+  <div id="home">
+    <div class="top">
+      <aside class="side box">
+        <ul id="sideCats"></ul>
+        <button id="allCats" class="btn-outline">View all categories →</button>
+      </aside>
+      <div>
+        <section class="slider" id="hero" aria-roledescription="carousel" aria-label="Promotions"></section>
+        <div class="tiles">
+          <a href="#flash" class="tile">New Arrivals<span>🎧</span></a>
+          <a href="#top-selling" class="tile t2">Top Deals<span>🛍️</span></a>
+          <a href="#brands" class="tile t3">Brand Stores<span>🏬</span></a>
+        </div>
+      </div>
+    </div>
+
+    <section id="flash" class="box">
+      <div class="flash-head">
+        <h2>⚡ Flash Sales</h2>
+        <div class="timer">Ends in <b id="h">05</b>:<b id="m">42</b>:<b id="s">18</b></div>
+      </div>
+      <div id="flashRow" class="row"></div>
+    </section>
+
+    <section class="box">
+      <h2>Shop by Category</h2>
+      <div id="catGrid" class="cats"></div>
+    </section>
+
+    <section id="top-selling" class="box">
+      <div class="sec-head"><h2>Top Selling</h2><a href="#" class="link" data-act="all">See All →</a></div>
+      <div id="topGrid" class="grid"></div>
+    </section>
+
+    <section class="box">
+      <div class="sec-head"><h2>Recommended For You</h2><a href="#" class="link" data-act="all">See All →</a></div>
+      <div id="recGrid" class="grid"></div>
+    </section>
+
+    <section id="brands" class="box">
+      <h2>Official Brand Stores</h2>
+      <div id="brandRow" class="brands"></div>
+    </section>
+  </div>
+</main>
+
+<div class="trust">
+  <div><i>🚚</i><b>Free Delivery</b><small>On orders above ₦25,000</small></div>
+  <div><i>🛡️</i><b>Secure Payment</b><small>100% protected payments</small></div>
+  <div><i>🔄</i><b>Easy Returns</b><small>7-day return policy</small></div>
+  <div><i>🎧</i><b>24/7 Support</b><small>We're here to help</small></div>
+</div>
+
+<div id="site-footer"></div>
+<script src="js/phones.js"></script>
+<script src="js/accessories.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
