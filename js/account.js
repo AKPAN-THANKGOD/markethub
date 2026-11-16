@@ -6,15 +6,20 @@ if (user) initAccount();
 
 function initAccount() {
   const esc = Auth.esc;
-  const myOrders = () => store.get('mh_orders', []).filter(o => o.user === user.email);
+  let ORDERS = [];                     // loaded by route() before each draw (from the account in API mode, from browser storage in demo mode)
+  const myOrders = () => ORDERS;
   let ADDRS = [];                      // loaded by route() before each draw
   const getAddrs = () => ADDRS;
   const date = d => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
   const TABS = [['overview', '🏠', 'Overview'], ['orders', '📦', 'My Orders'], ['addresses', '📍', 'Addresses'], ['wishlist', '♥', 'Wishlist'], ['profile', '👤', 'Profile & Security']];
   // DEMO tracking: minutes after ordering that each stage is reached. Replace with real status from your backend.
   const STAGES = [['Order placed', 0], ['Processing', 1], ['Shipped', 3], ['Delivered', 6]];
-  const stageOf = o => { const m = (Date.now() - new Date(o.date)) / 60000; return STAGES.reduce((a, [, t], i) => m >= t ? i : a, 0); };
-  const badge = o => { const i = stageOf(o); return `<span class="st st${i}">${STAGES[i][0]}</span>`; };
+  const KEYS = ['placed', 'processing', 'shipped', 'delivered', 'cancelled'], LABELS = [...STAGES.map(s => s[0]), 'Cancelled'];
+  // Orders from the server carry a real status (o.status); only demo-mode orders use the timed pretend tracking above.
+  const stageOf = o => { if (o.status) return KEYS.indexOf(o.status); const m = (Date.now() - new Date(o.date)) / 60000; return STAGES.reduce((a, [, t], i) => m >= t ? i : a, 0); };
+  const badge = o => { const i = stageOf(o); return `<span class="st st${i}">${LABELS[i]}</span>`; };
+  const stageDate = (o, i) => o.status ? date((o.events.find(e => e.status === KEYS[i]) || {}).date || o.date) : date(+new Date(o.date) + STAGES[i][1] * 60000);
+  const PAYST = { paid: 'Paid', failed: 'Payment failed', refunded: 'Refunded' };
   const SHIP = { standard: 'Standard Delivery', express: 'Express Delivery', pickup: 'Pickup Station' };
   const PAY = { card: 'Card payment', transfer: 'Bank transfer', cod: 'Pay on Delivery' };
   let editing = null;
@@ -36,11 +41,12 @@ function initAccount() {
       if (!o) return '<h1>Order not found</h1><a href="#orders" class="link">← Back to orders</a>';
       const cur = stageOf(o), a = o.address;
       return `<a href="#orders" class="link">← All orders</a><div class="oh2"><h1>Order #${o.id}</h1>${badge(o)}</div><p class="mut">Placed on ${date(o.date)}</p>
-        <div class="tl">${STAGES.map(([t, m], i) => `<div class="${i < cur ? 'done' : i === cur ? 'cur' : ''}"><i>${i < cur ? '✓' : i + 1}</i><b>${t}</b><small>${i <= cur ? date(+new Date(o.date) + m * 60000) : 'Pending'}</small></div>`).join('')}</div>
-        <div class="grid2"><div class="box"><h3>Items</h3>${o.items.map(i => `<div class="li"><span class="th">${byId(i.id)?.e || '📦'}</span><div><a href="product.html?id=${i.id}">${esc(i.name)}</a><small class="mut">Qty ${i.q} × ${fmt(i.price)}</small></div><b>${fmt(i.price * i.q)}</b></div>`).join('')}
+        ${cur === 4 ? `<div class="box">This order was cancelled${(o.events.find(e => e.status === 'cancelled') || {}).date ? ' on ' + date(o.events.find(e => e.status === 'cancelled').date) : ''}.</div>`
+          : `<div class="tl">${STAGES.map(([t], i) => `<div class="${i < cur ? 'done' : i === cur ? 'cur' : ''}"><i>${i < cur ? '✓' : i + 1}</i><b>${t}</b><small>${i <= cur ? stageDate(o, i) : 'Pending'}</small></div>`).join('')}</div>`}
+        <div class="grid2"><div class="box"><h3>Items</h3>${o.items.map(i => `<div class="li"><span class="th">${byId(i.id)?.e || '📦'}</span><div><a href="product.html?id=${i.id}">${esc(i.name)}</a><small class="mut">Qty ${i.q} × ${fmt(i.price)}${i.variant ? ' · ' + esc(i.variant) : ''}</small></div><b>${fmt(i.price * i.q)}</b></div>`).join('')}
           <hr><p class="row2"><span>Subtotal</span><b>${fmt(o.sub)}</b></p><p class="row2"><span>Delivery</span><b>${o.fee ? fmt(o.fee) : 'Free'}</b></p>${o.disc ? `<p class="row2"><span>Discount</span><b class="grn">- ${fmt(o.disc)}</b></p>` : ''}<p class="row2 tot"><span>Total</span><b>${fmt(o.total)}</b></p></div>
           <div class="box"><h3>Delivery address</h3><p>${esc(a.name)}<br>${esc(a.street)}<br>${esc(a.city)}${a.state ? ', ' + esc(a.state) : ''}<br>${esc(a.phone)}</p>
-            <h3>Delivery</h3><p>${SHIP[o.ship]}</p><h3>Payment</h3><p>${PAY[o.pay]}</p>${o.note ? `<h3>Instructions</h3><p>${esc(o.note)}</p>` : ''}
+            <h3>Delivery</h3><p>${SHIP[o.ship]}</p><h3>Payment</h3><p>${PAY[o.pay]}${PAYST[o.payStatus] ? ' — ' + PAYST[o.payStatus] : o.payStatus === 'pending' && o.pay !== 'cod' ? ' — awaiting payment' : ''}</p>${o.note ? `<h3>Instructions</h3><p>${esc(o.note)}</p>` : ''}
             <button class="btn big-btn" data-reorder="${o.id}">Reorder</button></div></div>`;
     },
     addresses() {
@@ -78,7 +84,7 @@ function initAccount() {
 
   /* ---------- router ---------- */
   async function route() {
-    ADDRS = await Addr.list();
+    [ADDRS, ORDERS] = await Promise.all([Addr.list(), Orders.list()]);
     const [tab, arg] = (location.hash.slice(1) || 'overview').split('/');
     const active = views[tab] ? tab : 'overview';
     $('#accNav').innerHTML = `<div class="who"><span class="av">${esc(user.name[0].toUpperCase())}</span><div><b>${esc(user.name)}</b><small class="mut">${esc(user.email)}</small></div></div>` +

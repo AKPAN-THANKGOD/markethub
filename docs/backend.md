@@ -39,13 +39,31 @@ Every page first calls `api/health.php`. If PHP and the database answer, the sit
 
 **Signed in, in API mode**, the cart (with ticked items and chosen colour/style), the wishlist and saved addresses live in your account, so they follow you to any browser or phone. Guests keep using browser storage, and when a guest signs in their cart and wishlist are merged into the account. On sign-out the browser copy is cleared so the next person doesn't see it.
 
-Still in browser storage, even in API mode: "Saved for later" items and orders (orders move to the server in phase 4).
+**Orders** (phase 4) are saved in your account too. When a signed-in shopper places an order, the browser sends only the choices (address, delivery, payment, note, promo code). The server builds the order from the **saved cart**, looks up the real prices, works out the delivery fee and discount, checks and takes the stock, and then empties the ticked cart items, all in one database transaction. Nothing the browser says about prices is trusted, and sending the order twice (double click, two tabs) creates only one.
+
+Still in browser storage, even in API mode: "Saved for later" items.
+
+## Orders: status, payments and stock
+Customers see the real status in **My Orders** and on the **Track Order** page (placed, processing, shipped, delivered, cancelled). Until the admin tools of phase 6 exist, you change it from the command line (run from the project folder):
+```
+D:\xampp\php\php.exe db\orders-cli.php list
+D:\xampp\php\php.exe db\orders-cli.php status MH12345678 shipped
+D:\xampp\php\php.exe db\orders-cli.php paid MH12345678
+D:\xampp\php\php.exe db\orders-cli.php restock 20
+```
+- `status` records the change with its date (that is what the timeline shows). Cancelling puts the items back in stock, and a cancelled order cannot be reopened.
+- `paid` marks the payment as received (for example after you see a bank transfer arrive). Real card payments come in phase 5; until then card and transfer orders stay **pending**, and the confirmation page says so instead of claiming a payment.
+- Stock goes down when an order is placed, so repeated test runs slowly use up the demo stock. `restock 20` tops every product that is below 20 back up.
+- The public Track Order lookup needs both the order number and the account email, shows no address or phone, and blocks a visitor after 10 wrong tries in 15 minutes.
+
+**Already have a database from phase 3?** Run `D:\xampp\mysql\bin\mysql.exe -u root < db\schema.sql` again. It is safe to repeat (it only creates what is missing) and adds the new `order_events` table. Do not run `seed.sql` again.
 
 ## 4. Run the API tests (no browser needed)
 ```
 set API_BASE=http://localhost:8000
 npx playwright test tests/api.spec.js
 ```
+One order test changes an order's status through `db/orders-cli.php`, so it needs the PHP command line. If `php` is not on your PATH, set `PHP_BIN` first (for example `set PHP_BIN=D:\xampp\php\php.exe`); without it that single test is skipped.
 
 ## Automatic testing on GitHub
 `.github/workflows/test.yml` has two jobs that run on every push: **e2e** (the website in demo mode, in a real browser) and **api** (this backend). The api job starts a fresh MySQL 8 database,
@@ -72,6 +90,6 @@ By default the API uses XAMPP's defaults (`root`, no password). To change that, 
 | 1 | Database, API foundation, accounts (register/login/logout), product catalogue | ✅ done |
 | 2 | Pages use the API: sign-in, register, profile, password and the product catalogue (automatic demo-mode fallback) | ✅ done |
 | 3 | Cart, wishlist and addresses saved on the server (guest cart merges on sign-in) | ✅ done |
-| 4 | Orders: create, history, tracking with real status; prices and promo codes calculated on the server | next |
-| 5 | Payments through Paystack's hosted checkout (never handle card numbers yourself) | |
+| 4 | Orders: create, history, tracking with real status; prices, promo codes, delivery fees and stock handled on the server | ✅ done |
+| 5 | Payments through Paystack's hosted checkout (never handle card numbers yourself) | next |
 | 6 | Deploy to a PHP + MySQL host over HTTPS; admin tools for orders and sellers | |

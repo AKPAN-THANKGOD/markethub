@@ -2,6 +2,8 @@
 //   Windows cmd:  set API_BASE=http://localhost:8000   then   npx playwright test tests/api.spec.js
 // (No browser is needed for these.)
 const { test, expect, request } = require('@playwright/test');
+const path = require('path');
+const { execFileSync } = require('child_process');
 
 const BASE = process.env.API_BASE;
 
@@ -137,6 +139,124 @@ test.describe('API (PHP + MySQL)', () => {
     expect((await op('/api/addresses/default.php', { id: id1 })).status()).toBe(404);
     expect((await (await api.get('/api/addresses/list.php')).json()).items[0].name).toBe('Api Tester');   // untouched
     await other.dispose();
+  });
+
+  // ---- orders (phase 4) ----
+  // Products used: 7 (MarketHub Official), 110 and 119 (two different outside sellers, so delivery is 2 x ₦2,500), 114 (only 2 in stock), 115 (over ₦300,000)
+  const prod = async id => (await (await api.get(`/api/products/get.php?id=${id}`)).json()).item;
+  const stockOf = async id => (await prod(id)).stock;
+  const setCart = async items => expect((await post('/api/cart/save.php', { items })).status()).toBe(200);
+  const placeOrder = (extra = {}) => post('/api/orders/create.php', { address_id: lagos, ship: 'standard', pay: 'transfer', note: '', promo: '', ...extra });
+  const BASKET = [{ id: 7, qty: 1, selected: true, variant: 'Color: Blue' }, { id: 110, qty: 1, selected: true }, { id: 119, qty: 2, selected: true }, { id: 9, qty: 1, selected: false }];
+  let lagos, orderA, orderB;
+
+  test('orders: need sign-in and a CSRF token; empty carts and bad input are refused', async () => {
+    const anon = await request.newContext({ baseURL: BASE });
+    const t = (await (await anon.get('/api/auth/me.php')).json()).csrf;
+    expect((await anon.post('/api/orders/create.php', { data: {}, headers: { 'X-CSRF-Token': t } })).status()).toBe(401);
+    expect((await anon.get('/api/orders/list.php')).status()).toBe(401);
+    expect((await anon.get('/api/orders/get.php?id=MH12345678')).status()).toBe(401);
+    await anon.dispose();
+
+    lagos = (await (await api.get('/api/addresses/list.php')).json()).items[0].id;
+    expect((await post('/api/orders/create.php', { address_id: lagos, ship: 'standard', pay: 'cod' }, '')).status()).toBe(403);   // no CSRF token
+    await setCart([{ id: 9, qty: 1, selected: false }]);                                                                          // nothing ticked
+    const empty = await placeOrder(); expect(empty.status()).toBe(422); expect((await empty.json()).error).toContain('Select at least one item');
+
+    await setCart(BASKET);
+    expect((await placeOrder({ ship: 'teleport' })).status()).toBe(422);
+    expect((await placeOrder({ pay: 'bitcoin' })).status()).toBe(422);
+    expect((await placeOrder({ address_id: undefined })).status()).toBe(422);
+    expect((await placeOrder({ address_id: 999999 })).status()).toBe(422);
+    const bad = await placeOrder({ promo: 'NOPE' }); expect(bad.status()).toBe(422); expect((await bad.json()).error).toContain('Invalid promo');
+    expect((await placeOrder({ note: 'x'.repeat(501) })).status()).toBe(422);
+    expect((await (await api.get('/api/orders/list.php')).json()).items).toEqual([]);                    // nothing was ordered...
+    expect((await (await api.get('/api/cart/get.php')).json()).items).toHaveLength(4);                   // ...and the cart is untouched
+  });
+
+  test('orders: the server prices the order, ignores what the browser claims, takes stock and empties the ticked items', async () => {
+    const [p7, p110, p119] = await Promise.all([prod(7), prod(110), prod(119)]);
+    const before = { 7: p7.stock, 110: p110.stock, 119: p119.stock };
+    const sub = p7.price + p110.price + 2 * p119.price, fee = 2 * 2500, disc = Math.round(sub * 5 / 100);
+    const r = await placeOrder({ promo: 'save5', note: 'Call on arrival', total: 1, sub: 1, fee: 0, items: [{ id: 205, qty: 50, price: 1 }] });   // the extra fields must be ignored
+    expect(r.status(), await r.text()).toBe(201);
+    orderA = (await r.json()).order;
+    expect(orderA.id).toMatch(/^MH\d{8}$/);
+    expect(orderA).toMatchObject({ status: 'placed', payStatus: 'pending', ship: 'standard', pay: 'transfer', promo: 'SAVE5', note: 'Call on arrival', sub, fee, disc, total: sub + fee - disc });
+    expect(orderA.items.map(i => [i.id, i.q, i.price])).toEqual([[7, 1, p7.price], [110, 1, p110.price], [119, 2, p119.price]]);
+    expect(orderA.items[0].variant).toBe('Color: Blue');
+    expect(orderA.address).toMatchObject({ street: '12 Test Street, Ikeja', city: 'Lagos' });
+    expect(orderA.events.map(e => e.status)).toEqual(['placed']);
+    expect(await stockOf(7)).toBe(before[7] - 1); expect(await stockOf(110)).toBe(before[110] - 1); expect(await stockOf(119)).toBe(before[119] - 2);
+    expect((await (await api.get('/api/cart/get.php')).json()).items).toEqual([{ id: 9, qty: 1, selected: false, variant: null }]);   // only the unticked item is left
+    expect((await placeOrder()).status()).toBe(422);                                                      // sending it again does not order twice
+  });
+
+  test('orders: two requests at the same moment make one order; express delivery is a flat fee', async () => {
+    const p119 = await prod(119);
+    await setCart([{ id: 119, qty: 1, selected: true }]);
+    const [a, b] = await Promise.all([placeOrder({ ship: 'express' }), placeOrder({ ship: 'express' })]);
+    expect([a.status(), b.status()].sort()).toEqual([201, 422]);
+    orderB = (await (a.status() === 201 ? a : b).json()).order;
+    expect(orderB).toMatchObject({ ship: 'express', sub: p119.price, fee: 5500, disc: 0, total: p119.price + 5500 });
+  });
+
+  test('orders: cannot buy more than is in stock; Pay on Delivery only in its cities and under the limit', async () => {
+    await setCart([{ id: 114, qty: 3, selected: true }]);                                                 // only 2 in stock
+    const over = await placeOrder(); expect(over.status()).toBe(409); expect((await over.json()).error).toContain('only has');
+    expect(await stockOf(114)).toBe(2);                                                                    // nothing was taken
+    const uyo = (await (await post('/api/addresses/save.php', { name: 'Api Tester', phone: '08031234567', street: '3 Oron Road', city: 'Uyo', state: 'Akwa Ibom' })).json()).id;
+    await setCart([{ id: 119, qty: 1, selected: true }]);
+    const cod = await placeOrder({ pay: 'cod', address_id: uyo }); expect(cod.status()).toBe(422); expect((await cod.json()).error).toContain('Pay on Delivery');
+    await setCart([{ id: 115, qty: 1, selected: true }]);                                                  // ₦335,000 is over the Pay on Delivery limit
+    expect((await placeOrder({ pay: 'cod' })).status()).toBe(422);
+    await post('/api/addresses/delete.php', { id: uyo });
+    await setCart([]);
+  });
+
+  test('orders: list and get show my orders (newest first); other shoppers cannot see them', async () => {
+    const list = (await (await api.get('/api/orders/list.php')).json()).items;
+    expect(list.map(o => o.id)).toEqual([orderB.id, orderA.id]);
+    const one = await api.get(`/api/orders/get.php?id=${orderA.id.toLowerCase()}`);
+    expect(one.status()).toBe(200); expect((await one.json()).order).toMatchObject({ id: orderA.id, total: orderA.total });
+    expect((await api.get('/api/orders/get.php?id=MH00000000')).status()).toBe(404);
+    expect((await api.get('/api/orders/get.php?id=nonsense')).status()).toBe(404);
+
+    const other = await request.newContext({ baseURL: BASE });
+    const t1 = (await (await other.get('/api/auth/me.php')).json()).csrf;
+    const reg = await other.post('/api/auth/register.php', { data: { name: 'Other Buyer', email: `buyer${stamp}@example.com`, phone: '08022223333', password: 'Passw0rd!1' }, headers: { 'X-CSRF-Token': t1 } });
+    expect(reg.status(), await reg.text()).toBe(201);
+    expect((await (await other.get('/api/orders/list.php')).json()).items).toEqual([]);
+    expect((await other.get(`/api/orders/get.php?id=${orderA.id}`)).status()).toBe(404);                  // looks the same as an order that does not exist
+    await other.dispose();
+  });
+
+  test('orders: public tracking needs the order number AND the account email, and shows no address', async () => {
+    const anon = await request.newContext({ baseURL: BASE });
+    expect((await anon.get(`/api/orders/track.php?id=${orderA.id}&email=wrong@example.com`)).status()).toBe(404);
+    expect((await anon.get(`/api/orders/track.php?id=MH00000000&email=${user.email}`)).status()).toBe(404);
+    const ok = await anon.get(`/api/orders/track.php?id=${orderA.id.toLowerCase()}&email=${user.email.toUpperCase()}`);
+    expect(ok.status(), await ok.text()).toBe(200);
+    const o = (await ok.json()).order;
+    expect(o).toMatchObject({ id: orderA.id, status: 'placed', total: orderA.total });
+    expect(o).not.toHaveProperty('address'); expect(o).not.toHaveProperty('note');
+    expect(JSON.stringify(o)).not.toContain('08031234567');
+    await anon.dispose();
+  });
+
+  test('orders: a status change (command line) shows up for the shopper; cancelling puts the stock back', async () => {
+    const cli = (...args) => execFileSync(process.env.PHP_BIN || 'php', [path.join(__dirname, '..', 'db', 'orders-cli.php'), ...args], { encoding: 'utf8' });
+    try { cli('list'); } catch { test.skip(true, 'PHP command line not found - set PHP_BIN to your php executable to run this test'); }
+    cli('status', orderA.id, 'shipped');
+    let o = (await (await api.get(`/api/orders/get.php?id=${orderA.id}`)).json()).order;
+    expect(o.status).toBe('shipped'); expect(o.events.map(e => e.status)).toEqual(['placed', 'shipped']);
+    const before = await stockOf(110);
+    cli('status', orderA.id, 'cancelled');
+    o = (await (await api.get(`/api/orders/get.php?id=${orderA.id}`)).json()).order;
+    expect(o.status).toBe('cancelled');
+    expect(await stockOf(110)).toBe(before + 1);                                                           // the cancelled order's items went back on the shelf
+    expect(() => cli('status', orderA.id, 'processing')).toThrow();                                        // a cancelled order stays cancelled
+    cli('status', orderB.id, 'cancelled');                                                                 // leave the shared test stock as we found it
   });
 
   test('login: locks an email after 5 failed attempts', async () => {

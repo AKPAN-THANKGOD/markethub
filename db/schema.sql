@@ -138,6 +138,15 @@ CREATE TABLE IF NOT EXISTS order_items (
   CONSTRAINT fk_item_prod  FOREIGN KEY (product_id) REFERENCES products(id)
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS order_events (          -- one row each time an order reaches a new status (drives the tracking timeline)
+  id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  order_id   INT UNSIGNED NOT NULL,
+  status     ENUM('placed','processing','shipped','delivered','cancelled') NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_order (order_id),
+  CONSTRAINT fk_event_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS contact_messages (
   id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   name       VARCHAR(80)  NOT NULL,

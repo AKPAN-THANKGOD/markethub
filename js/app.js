@@ -250,7 +250,7 @@ async function detectBackend() {
 }
 /* ---------- Cart & wishlist: browser storage for guests, saved to the account when signed in (API mode) ---------- */
 const OWNER_KEY = 'mh_owner';       // whose cart the browser copy belongs to ('' = a guest)
-let cartPushing = false, cartDirty = false;
+let cartPushing = false, cartDirty = false, pushDone = Promise.resolve();
 const cartPayload = () => {
   const unsel = store.get('mh_unsel', []).map(String), vars = store.get('mh_var', {});
   return { items: Object.keys(cart).filter(id => byId(id)).map(id => ({ id: +id, qty: cart[id], selected: !unsel.includes(id), variant: vars[id] || null })) };
@@ -260,16 +260,19 @@ const flag = v => { try { v ? sessionStorage.setItem('mh_dirty', '1') : sessionS
 async function pushUserData() {
   if (MH.mode !== 'api' || !MH.user) return;                  // guests and demo mode only use browser storage
   flag(true);                                                  // if a page change interrupts the save, the next page finishes it
-  if (cartPushing) { cartDirty = true; return; }               // one save at a time; the newest state is sent right after
+  if (cartPushing) { cartDirty = true; return pushDone; }      // one save at a time; the newest state is sent right after
   cartPushing = true;
-  try {
-    do {
-      cartDirty = false;
-      await Promise.all([apiFetch('cart/save.php', { method: 'POST', body: cartPayload(), keepalive: true }),
-                         apiFetch('wishlist/save.php', { method: 'POST', body: wishPayload(), keepalive: true })]);
-    } while (cartDirty);
-    flag(false);
-  } finally { cartPushing = false; }
+  pushDone = (async () => {
+    try {
+      do {
+        cartDirty = false;
+        await Promise.all([apiFetch('cart/save.php', { method: 'POST', body: cartPayload(), keepalive: true }),
+                           apiFetch('wishlist/save.php', { method: 'POST', body: wishPayload(), keepalive: true })]);
+      } while (cartDirty);
+      flag(false);
+    } finally { cartPushing = false; }
+  })();
+  return pushDone;                                             // callers that must be sure the server copy is current (checkout) can await this
 }
 function applyUserData(items, ids) {
   cart = {}; const unsel = [], vars = {};
@@ -414,6 +417,31 @@ const Addr = {
     if (MH.mode === 'api') { const r = await apiFetch('addresses/default.php', { method: 'POST', body: { id } }); return r.error ? { error: r.error } : { items: r.items }; }
     const as = store.get(Addr.key(), []).map(a => ({ ...a, def: a.id === id }));
     store.set(Addr.key(), as); return { items: as };
+  }
+};
+
+/* ---------- Orders: browser storage (demo) or the account (API mode). In API mode the server prices and stores the order; the browser only sends the choices. ---------- */
+const Orders = {
+  async list() {                                   // newest first
+    if (MH.mode === 'api') return (await apiFetch('orders/list.php')).items || [];
+    const u = Auth.user(); return u ? store.get('mh_orders', []).filter(o => o.user === u.email) : [];
+  },
+  async create(choices, demoOrder) {               // choices = { address_id, ship, pay, note, promo }; demoOrder is only used (and saved) in demo mode. Returns { order } or { error }
+    if (MH.mode === 'api') {
+      await pushUserData();                        // the server builds the order from the saved cart, so make sure it is up to date
+      const r = await apiFetch('orders/create.php', { method: 'POST', body: choices });
+      return r.error ? { error: r.error } : { order: r.order };
+    }
+    store.set('mh_orders', [demoOrder, ...store.get('mh_orders', [])]);   // no card data is stored
+    return { order: demoOrder };
+  },
+  async track(id, email) {                         // public lookup by order number + email. Returns { order } or { error }
+    if (MH.mode === 'api') {
+      const r = await apiFetch('orders/track.php?id=' + encodeURIComponent(id) + '&email=' + encodeURIComponent(email));
+      return r.error ? { error: r.error } : { order: r.order };
+    }
+    const o = store.get('mh_orders', []).find(x => x.id === id && x.user === email);
+    return o ? { order: o } : { error: "We couldn't find an order with those details." };
   }
 };
 

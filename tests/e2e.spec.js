@@ -198,12 +198,12 @@ test('8. checkout: address, delivery, payment validation, place order', async ()
 test('9. account: orders, tracking timeline, reorder, track page', async () => {
   await go('account.html#orders');
   await expect(page.locator('.ocard')).toHaveCount(1);
+  const id = (await page.locator('.ocard b').first().textContent()).replace('#', '').trim();    // works in both modes (browser storage or server)
   await page.click('.ocard a[href^="#orders/"]');
   await expect(page.locator('.tl > div')).toHaveCount(4);
   await expect(page.locator('#acc')).toContainText('Binatone');
   await page.click('[data-reorder]');
   await expect(page).toHaveURL(/cart\.html/); await expect(page.locator('.ci2')).toHaveCount(2);   // waits for the page to draw
-  const id = await page.evaluate(() => JSON.parse(localStorage.getItem('mh_orders'))[0].id);
   await go('page.html?p=track');
   await page.fill('#trkForm input[name=id]', 'MH00000000'); await page.click('#trkForm button.btn'); await expect(page.locator('#trkErr')).toContainText("couldn't find");
   await page.fill('#trkForm input[name=id]', id.toLowerCase()); await page.click('#trkForm button.btn');

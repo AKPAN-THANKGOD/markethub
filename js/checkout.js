@@ -65,7 +65,9 @@ function renderSummary() {
 /* ---- validation ---- */
 const luhn = n => { let s = 0, d = false; for (let i = n.length - 1; i >= 0; i--) { let x = +n[i]; if (d && (x *= 2) > 9) x -= 9; s += x; d = !d; } return s % 10 === 0; };
 function fail(msg, sel_) { toast(msg); const el = $(sel_); el?.scrollIntoView({ behavior: 'smooth', block: 'center' }); el?.focus?.(); return false; }
-function placeOrder() {
+let placing = false;
+async function placeOrder() {
+  if (placing) return;                                   // ignore double clicks while the order is being sent
   if (!items.length) return toast('Your cart is empty');
   const a = curAddr(); if (!a) return fail('Please choose a delivery address', '#secAddr');
   if (sel.pay === 'card') {
@@ -77,20 +79,27 @@ function placeOrder() {
   }
   if (sel.pay === 'cod' && !codOk()) return fail('Pay on Delivery is not available for this order', '#codOpt');
   if (!$('#terms').checked) return fail('Please accept the Terms & Privacy Policy', '#terms');
-  const t = totals();
-  const order = { user: USER.email, id: 'MH' + Date.now().toString().slice(-8), date: new Date().toISOString(), address: a, ship: sel.ship, pay: sel.pay, note: $('#note').value.trim(),
+  const t = totals(), note = $('#note').value.trim();
+  const demoOrder = { user: USER.email, id: 'MH' + Date.now().toString().slice(-8), date: new Date().toISOString(), address: a, ship: sel.ship, pay: sel.pay, note,
     items: items.map(({ p, q }) => ({ id: p.id, name: p.name, price: p.price, q })), sub: t.sub, fee: t.fee, disc: t.disc, total: t.total };
-  store.set('mh_orders', [order, ...store.get('mh_orders', [])]);       // no card data is stored
+  placing = true; $('#place').disabled = true;
+  let r;
+  try { r = await Orders.create({ address_id: a.id, ship: sel.ship, pay: sel.pay, note, promo }, demoOrder); }   // API mode: the server works out the prices; card details are never sent
+  catch { r = { error: 'Could not reach the server. Please try again.' }; }
+  placing = false; $('#place').disabled = false;
+  if (r.error) return toast(r.error);
+  const order = r.order;
   items.forEach(({ p }) => delete cart[p.id]);
   store.set('mh_promo', ''); store.set('mh_unsel', unsel.filter(id => cart[id])); save();
   confirmPage(order);
 }
 function confirmPage(o) {
   step(5); scrollTo(0, 0);
-  const payTxt = { card: 'Paid by card', transfer: 'Bank transfer — transfer details have been sent to your email', cod: 'Pay on Delivery — have cash or POS ready' }[o.pay];
+  const api = MH.mode === 'api';   // real orders: nothing is charged yet, so don't claim a payment happened
+  const payTxt = { card: api ? 'Card payment — pending confirmation' : 'Paid by card', transfer: api ? 'Bank transfer — pending confirmation' : 'Bank transfer — transfer details have been sent to your email', cod: 'Pay on Delivery — have cash or POS ready' }[o.pay];
   const eta = { standard: range(2, 4), express: range(1, 2), pickup: bizDay(1) }[o.ship];
   $('#ckPage').innerHTML = `<div class="steps box" id="steps"></div><div class="box emptycart"><div class="big">✅</div><h2>Thank you, your order is placed!</h2>
-    <p>Order <b>#${o.id}</b> · confirmation sent to ${esc(USER.email)}</p>
+    <p>Order <b>#${o.id}</b> · ${api ? 'saved to your account under My Orders' : 'confirmation sent to ' + esc(USER.email)}</p>
     <div class="conf"><div><b>Delivering to</b><br>${esc(o.address.name)}<br>${esc(o.address.street)}, ${esc(o.address.city)}</div>
       <div><b>Estimated delivery</b><br>${eta}<br><small class="mut">${{ standard: 'Standard', express: 'Express', pickup: 'Pickup station' }[o.ship]}</small></div>
       <div><b>Payment</b><br>${payTxt}<br><b class="price">${fmt(o.total)}</b></div></div>

@@ -109,16 +109,19 @@ $('#faqSearch')?.addEventListener('input', e => {
 });
 
 /* Track order: looks the order up in this browser's saved orders (demo) */
-$('#trkForm')?.addEventListener('submit', e => {
+$('#trkForm')?.addEventListener('submit', async e => {
   e.preventDefault();
   const f = e.target, id = f.elements.namedItem('id').value.trim().toUpperCase(), em = f.elements.namedItem('email').value.trim().toLowerCase();
   const err = $('#trkErr'); err.textContent = ''; $('#trkOut').innerHTML = '';
   if (!id || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(em)) return err.textContent = 'Enter your order number and a valid email.';
-  const o = store.get('mh_orders', []).find(x => x.id === id && x.user === em);
-  if (!o) return err.textContent = "We couldn't find an order with those details.";
-  const m = (Date.now() - new Date(o.date)) / 60000, cur = STAGES.reduce((a, [, t], i) => m >= t ? i : a, 0);
-  $('#trkOut').innerHTML = `<div class="box"><div class="oh2"><h2>Order #${esc(o.id)}</h2><span class="st st${cur}">${STAGES[cur][0]}</span></div><p class="mut">Placed on ${dt(o.date)} · ${o.items.reduce((a, i) => a + i.q, 0)} item(s) · ${fmt(o.total)}</p>
-    <div class="tl">${STAGES.map(([t, mm], i) => `<div class="${i < cur ? 'done' : i === cur ? 'cur' : ''}"><i>${i < cur ? '✓' : i + 1}</i><b>${t}</b><small>${i <= cur ? dt(+new Date(o.date) + mm * 60000) : 'Pending'}</small></div>`).join('')}</div></div>`;
+  const r = await Orders.track(id, em);
+  if (r.error) return err.textContent = r.error;
+  const o = r.order, KEYS = ['placed', 'processing', 'shipped', 'delivered', 'cancelled'];
+  // Real orders carry a status from the server; demo orders use the timed pretend tracking.
+  const m = (Date.now() - new Date(o.date)) / 60000, cur = o.status ? KEYS.indexOf(o.status) : STAGES.reduce((a, [, t], i) => m >= t ? i : a, 0);
+  const when = (i, mm) => o.status ? dt((o.events.find(ev => ev.status === KEYS[i]) || {}).date || o.date) : dt(+new Date(o.date) + mm * 60000);
+  $('#trkOut').innerHTML = `<div class="box"><div class="oh2"><h2>Order #${esc(o.id)}</h2><span class="st st${cur}">${cur === 4 ? 'Cancelled' : STAGES[cur][0]}</span></div><p class="mut">Placed on ${dt(o.date)} · ${o.items.reduce((a, i) => a + i.q, 0)} item(s) · ${fmt(o.total)}</p>
+    ${cur === 4 ? '<p>This order was cancelled.</p>' : `<div class="tl">${STAGES.map(([t, mm], i) => `<div class="${i < cur ? 'done' : i === cur ? 'cur' : ''}"><i>${i < cur ? '✓' : i + 1}</i><b>${t}</b><small>${i <= cur ? when(i, mm) : 'Pending'}</small></div>`).join('')}</div>`}</div>`;
 });
 const prefill = new URLSearchParams(location.search).get('id'), me = Auth.user();
 if ($('#trkForm')) { if (prefill) $('#trkForm').elements.namedItem('id').value = prefill; if (me) $('#trkForm').elements.namedItem('email').value = me.email; }
