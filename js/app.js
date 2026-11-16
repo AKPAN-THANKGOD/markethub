@@ -58,7 +58,7 @@ function mountShell() {
   const u = Auth.user(), first = u ? Auth.esc(u.name.split(' ')[0]) : '';
   $('#site-header').innerHTML = `
   <div class="topbar"><span>Deliver to: <b>Lagos</b></span>
-    <span><a href="page.html?p=seller">Sell on MarketHub</a><a href="page.html?p=help">Help</a><a href="page.html?p=track">Track Order</a>${u ? `<a href="#" data-act="account">Hi, ${first}</a><a href="#" data-act="logout" class="reg">Sign Out</a>` : '<a href="account.html">Sign In</a><a href="account.html#register" class="reg">Register</a>'}</span></div>
+    <span><a href="page.html?p=seller">Sell on MarketHub</a><a href="page.html?p=help">Help</a><a href="page.html?p=track">Track Order</a>${u ? `${MH.admin ? '<a href="admin.html">Admin</a>' : ''}<a href="#" data-act="account">Hi, ${first}</a><a href="#" data-act="logout" class="reg">Sign Out</a>` : '<a href="account.html">Sign In</a><a href="account.html#register" class="reg">Register</a>'}</span></div>
   <header class="head">
     <a href="index.html" class="logo"><i>🏪</i>MarketHub</a>
     <form class="search" id="searchForm">
@@ -222,7 +222,7 @@ function initHome() {
 }
 
 /* ---------- Backend detection: use the PHP API when it is there, otherwise the browser-storage demo ---------- */
-const MH = window.MH = { mode: 'demo', user: null, csrf: '', ready: null };
+const MH = window.MH = { mode: 'demo', user: null, csrf: '', ready: null, payments: false, admin: false };   // payments: online payment is switched on; admin: this account may open admin.html
 async function apiFetch(path, { method = 'GET', body, keepalive = false } = {}) {
   const res = await fetch('api/' + path, {
     method, credentials: 'same-origin', keepalive,
@@ -242,7 +242,7 @@ async function detectBackend() {
     if (!res.ok || !health.ok) return;
     const me = await apiFetch('auth/me.php');
     if (me.error) return;
-    MH.mode = 'api'; MH.user = me.user; MH.csrf = me.csrf;
+    MH.mode = 'api'; MH.user = me.user; MH.csrf = me.csrf; MH.payments = !!health.payments; MH.admin = !!me.admin;
     const list = await apiFetch('products/list.php');   // the catalogue comes from MySQL; the bundled data stays as the fallback
     if (Array.isArray(list.items) && list.items.length) { PRODUCTS.splice(0, PRODUCTS.length, ...list.items); window.EXTRA_PRODUCTS = list.items; }
     await syncUserData();                               // signed in: load this account's cart and wishlist
@@ -434,6 +434,14 @@ const Orders = {
     }
     store.set('mh_orders', [demoOrder, ...store.get('mh_orders', [])]);   // no card data is stored
     return { order: demoOrder };
+  },
+  async pay(id) {                                  // API mode + payments on: ask for the Paystack page for this order. Returns { url } (go there), { paid: true } (nothing to charge) or { error }
+    const r = await apiFetch('payments/init.php', { method: 'POST', body: { order: id } });
+    return r.error ? { error: r.error } : r;
+  },
+  async verify(reference) {                        // back from Paystack: the server asks Paystack whether it really worked. Returns { state: 'paid'|'pending'|'failed', order } or { error }
+    const r = await apiFetch('payments/verify.php?reference=' + encodeURIComponent(reference));
+    return r.error ? { error: r.error } : r;
   },
   async track(id, email) {                         // public lookup by order number + email. Returns { order } or { error }
     if (MH.mode === 'api') {

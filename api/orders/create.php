@@ -3,6 +3,7 @@ declare(strict_types=1);
 require __DIR__ . '/../lib/bootstrap.php';
 require __DIR__ . '/../lib/userdata.php';
 require __DIR__ . '/../lib/orders.php';
+require __DIR__ . '/../lib/order_admin.php';
 
 // Places an order from the signed-in shopper's TICKED cart items. The items, prices, delivery fee and discount all come from the database, never from the request.
 // Body: {"address_id":3,"ship":"standard","pay":"transfer","note":"Call on arrival","promo":"SAVE5"}
@@ -23,6 +24,7 @@ $code = isset($d['promo']) && is_string($d['promo']) ? strtoupper(trim($d['promo
 if (mb_strlen($code) > 30) throw new HttpError(422, 'Invalid promo code.');
 
 $pdo = db();
+expire_unpaid_orders($pdo, (int)cfg('unpaid_hours', 24));      // first free the stock held by orders nobody paid for
 $pdo->beginTransaction();
 try {
     $lines = cart_lines($pdo, $u['id'], true);          // locks the cart and product rows, so a double click or two tabs can't order twice or oversell

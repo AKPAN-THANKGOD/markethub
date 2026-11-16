@@ -147,6 +147,18 @@ CREATE TABLE IF NOT EXISTS order_events (          -- one row each time an order
   CONSTRAINT fk_event_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS payments (               -- one row per attempt to pay an order online (phase 5)
+  id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  order_id    INT UNSIGNED NOT NULL,
+  reference   VARCHAR(64)  NOT NULL UNIQUE,         -- our payment reference, sent to Paystack, e.g. MH12345678-ab12cd34ef56
+  amount_kobo BIGINT UNSIGNED NOT NULL,             -- what we asked Paystack to charge (Naira x 100)
+  status      ENUM('pending','paid','failed','mismatch') NOT NULL DEFAULT 'pending',   -- mismatch = Paystack reported a different amount: needs a human
+  created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  paid_at     TIMESTAMP NULL DEFAULT NULL,
+  KEY idx_order (order_id),
+  CONSTRAINT fk_pay_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS contact_messages (
   id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   name       VARCHAR(80)  NOT NULL,

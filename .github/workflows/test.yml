@@ -51,7 +51,7 @@ jobs:
           extensions: mbstring, pdo_mysql
           coverage: none
       - name: Check PHP syntax
-        run: find api -name '*.php' -print0 | xargs -0 -n1 php -l
+        run: find api db -name '*.php' -print0 | xargs -0 -n1 php -l
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -65,6 +65,7 @@ jobs:
               'db' => ['host' => '127.0.0.1', 'port' => 3306, 'name' => 'markethub', 'user' => 'root', 'pass' => 'root'],
               'debug' => true,
               'allowed_origin' => '',
+              'admin_emails' => ['ci-admin@example.com'],
           ];
           EOF
       - name: Create the database and load the products
@@ -79,20 +80,34 @@ jobs:
             echo "$t: $(mysql -N -B -h 127.0.0.1 -P 3306 -uroot -proot markethub -e "SELECT COUNT(*) FROM $t" 2>/dev/null)"
           done
           test "$(mysql -N -B -h 127.0.0.1 -P 3306 -uroot -proot markethub -e 'SELECT COUNT(*) FROM products' 2>/dev/null)" -ge 56
-      - name: Start the PHP server
+      - run: npx playwright install --with-deps chromium
+      # Round 1: payments switched ON, talking to a fake Paystack that tests/pay.spec.js starts on port 9911
+      - name: Start the PHP server (payments on)
         run: |
           PHP_CLI_SERVER_WORKERS=4 nohup php -S localhost:8000 > php-server.log 2>&1 &
           for i in $(seq 1 30); do curl -fs http://localhost:8000/api/health.php && break || sleep 1; done
           curl -fs http://localhost:8000/api/health.php
-      - name: Run the API tests
-        run: npx playwright test tests/api.spec.js
+        env:
+          PAYSTACK_SECRET_KEY: sk_test_ci_secret
+          PAYSTACK_BASE_URL: http://127.0.0.1:9911
+      - name: Run the API, payment and admin tests
+        run: npx playwright test tests/api.spec.js tests/pay.spec.js tests/admin.spec.js
         env:
           API_BASE: http://localhost:8000
           API_ONLY: '1'
-      - name: Run the browser tests against the real backend
+          PAYSTACK_SECRET_KEY: sk_test_ci_secret
+          PAYSTACK_BASE_URL: http://127.0.0.1:9911
+          ADMIN_EMAIL: ci-admin@example.com
+      # Round 2: payments OFF (no key), so the existing shopping journey still ends in a "pending" card order
+      - name: Restart the PHP server (payments off)
         run: |
-          npx playwright install --with-deps chromium
-          npx playwright test tests/e2e.spec.js
+          pkill -f "php -S" || true
+          sleep 1
+          PHP_CLI_SERVER_WORKERS=4 nohup php -S localhost:8000 >> php-server.log 2>&1 &
+          for i in $(seq 1 30); do curl -fs http://localhost:8000/api/health.php | grep -q '"payments":false' && break || sleep 1; done
+          curl -fs http://localhost:8000/api/health.php
+      - name: Run the browser tests against the real backend
+        run: npx playwright test tests/e2e.spec.js
         env:
           E2E_BASE: http://localhost:8000
           E2E_EXPECT_MODE: api

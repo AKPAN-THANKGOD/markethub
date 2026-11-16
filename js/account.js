@@ -22,6 +22,7 @@ function initAccount() {
   const PAYST = { paid: 'Paid', failed: 'Payment failed', refunded: 'Refunded' };
   const SHIP = { standard: 'Standard Delivery', express: 'Express Delivery', pickup: 'Pickup Station' };
   const PAY = { card: 'Card payment', transfer: 'Bank transfer', cod: 'Pay on Delivery' };
+  const canPay = o => MH.mode === 'api' && MH.payments && o.pay !== 'cod' && o.payStatus === 'pending' && o.status !== 'cancelled';   // unpaid card / transfer order: offer "Pay now"
   let editing = null;
 
   /* ---------- views ---------- */
@@ -47,7 +48,7 @@ function initAccount() {
           <hr><p class="row2"><span>Subtotal</span><b>${fmt(o.sub)}</b></p><p class="row2"><span>Delivery</span><b>${o.fee ? fmt(o.fee) : 'Free'}</b></p>${o.disc ? `<p class="row2"><span>Discount</span><b class="grn">- ${fmt(o.disc)}</b></p>` : ''}<p class="row2 tot"><span>Total</span><b>${fmt(o.total)}</b></p></div>
           <div class="box"><h3>Delivery address</h3><p>${esc(a.name)}<br>${esc(a.street)}<br>${esc(a.city)}${a.state ? ', ' + esc(a.state) : ''}<br>${esc(a.phone)}</p>
             <h3>Delivery</h3><p>${SHIP[o.ship]}</p><h3>Payment</h3><p>${PAY[o.pay]}${PAYST[o.payStatus] ? ' — ' + PAYST[o.payStatus] : o.payStatus === 'pending' && o.pay !== 'cod' ? ' — awaiting payment' : ''}</p>${o.note ? `<h3>Instructions</h3><p>${esc(o.note)}</p>` : ''}
-            <button class="btn big-btn" data-reorder="${o.id}">Reorder</button></div></div>`;
+            ${canPay(o) ? `<button class="btn big-btn" data-pay="${o.id}">Pay ${fmt(o.total)} now</button> ` : ''}<button class="${canPay(o) ? 'btn-outline' : 'btn'} big-btn" data-reorder="${o.id}">Reorder</button></div></div>`;
     },
     addresses() {
       const as = getAddrs();
@@ -79,7 +80,7 @@ function initAccount() {
     return `<div class="box ocard"><div class="oh2"><div><b>#${o.id}</b><small class="mut"> · ${date(o.date)}</small></div>${badge(o)}</div>
       <div class="oi"><div class="thumbs2">${o.items.slice(0, 4).map(i => `<span class="th">${byId(i.id)?.e || '📦'}</span>`).join('')}</div>
       <div><small class="mut">${o.items.reduce((a, i) => a + i.q, 0)} item(s)</small><br><b class="price">${fmt(o.total)}</b></div>
-      <div class="acts3"><a class="btn-outline mini" href="#orders/${o.id}">View details</a><button class="btn mini2" data-reorder="${o.id}">Reorder</button></div></div></div>`;
+      <div class="acts3"><a class="btn-outline mini" href="#orders/${o.id}">View details</a>${canPay(o) ? `<button class="btn mini2" data-pay="${o.id}">Pay now</button>` : `<button class="btn mini2" data-reorder="${o.id}">Reorder</button>`}</div></div></div>`;
   }
 
   /* ---------- router ---------- */
@@ -96,10 +97,16 @@ function initAccount() {
 
   /* ---------- actions ---------- */
   document.addEventListener('click', async e => {
-    const c = e.target.closest('[data-reorder],[data-newaddr],[data-cancel],[data-eaddr],[data-defaddr],[data-deladdr],[data-wmove],[data-wrm],[data-signout]');
+    const c = e.target.closest('[data-pay],[data-reorder],[data-newaddr],[data-cancel],[data-eaddr],[data-defaddr],[data-deladdr],[data-wmove],[data-wrm],[data-signout]');
     if (!c) return;
     const d = c.dataset, f = $('#afrm');
-    if (d.reorder) {
+    if (d.pay) {
+      c.disabled = true;
+      const r = await Orders.pay(d.pay);
+      if (r.url) { location.href = r.url; return; }
+      c.disabled = false; if (r.error) toast(r.error); else { await route(); toast('Order paid ✔'); }
+    }
+    else if (d.reorder) {
       const o = myOrders().find(x => x.id === d.reorder), ids = [];
       o.items.forEach(i => { if (byId(i.id)) { cart[i.id] = (cart[i.id] || 0) + i.q; ids.push(String(i.id)); } });
       store.set('mh_unsel', store.get('mh_unsel', []).filter(x => !ids.includes(x))); save(); location.href = 'cart.html';

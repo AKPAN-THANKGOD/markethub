@@ -1,7 +1,8 @@
 MH.ready.then(async () => {   // wait for the backend check (see app.js), then run
 /* Checkout page – runs after app.js.
-   DEMO ONLY: no payment is processed and card details are never stored.
-   For real payments use a hosted provider (e.g. Paystack Inline/Checkout) – never handle raw card data yourself. */
+   Demo mode: no payment is processed and card details are never stored.
+   API mode with payments switched on: the order is saved, then the shopper pays on Paystack's own page (hosted checkout), so card details never reach this site.
+   They come back to this page with ?reference=... and payResult() asks the server to confirm the payment. */
 if (!Auth.user()) location.replace('account.html?next=checkout.html');   // checkout needs an account
 const USER = Auth.user() || { id: 0, name: 'Guest', email: '' };
 const PROMOS = { WELCOME10: { flat: 10000 }, SAVE5: { pct: 5 }, NEWUSER: { flat: 5000 } };   // keep in sync with cart.js
@@ -14,6 +15,8 @@ const items = Object.keys(cart).filter(id => byId(id) && !unsel.includes(id)).ma
 let promo = store.get('mh_promo', ''), promoMsg = '', editing = null;
 let addrs = await Addr.list();
 const sel = { addr: (addrs.find(a => a.def) || addrs[0] || {}).id, ship: 'standard', pay: 'card' };
+const HOSTED = MH.mode === 'api' && MH.payments;                  // card / transfer are paid on Paystack's page
+const payRef = new URLSearchParams(location.search).get('reference') || new URLSearchParams(location.search).get('trxref');   // set when Paystack sends the shopper back
 
 /* ---- helpers ---- */
 const step = n => $('#steps').innerHTML = ['Cart', 'Address', 'Payment', 'Confirmation'].map((t, i) =>
@@ -70,7 +73,7 @@ async function placeOrder() {
   if (placing) return;                                   // ignore double clicks while the order is being sent
   if (!items.length) return toast('Your cart is empty');
   const a = curAddr(); if (!a) return fail('Please choose a delivery address', '#secAddr');
-  if (sel.pay === 'card') {
+  if (sel.pay === 'card' && !HOSTED) {
     const n = $('#cn').value.replace(/\s/g, ''), [mm, yy] = $('#ce').value.split('/').map(Number), now = new Date();
     if (!/^\d{13,19}$/.test(n) || !luhn(n)) return fail('Enter a valid card number', '#cn');
     if (!(mm >= 1 && mm <= 12) || !yy || new Date(2000 + yy, mm) <= now) return fail('Enter a valid expiry date (MM/YY)', '#ce');
@@ -86,17 +89,42 @@ async function placeOrder() {
   let r;
   try { r = await Orders.create({ address_id: a.id, ship: sel.ship, pay: sel.pay, note, promo }, demoOrder); }   // API mode: the server works out the prices; card details are never sent
   catch { r = { error: 'Could not reach the server. Please try again.' }; }
-  placing = false; $('#place').disabled = false;
-  if (r.error) return toast(r.error);
+  if (r.error) { placing = false; $('#place').disabled = false; return toast(r.error); }
   const order = r.order;
   items.forEach(({ p }) => delete cart[p.id]);
   store.set('mh_promo', ''); store.set('mh_unsel', unsel.filter(id => cart[id])); save();
+  if (HOSTED && order.pay !== 'cod') {                   // the order is saved; now pay for it on Paystack
+    $('#place').textContent = 'Taking you to the secure payment page…';
+    const p = await Orders.pay(order.id);
+    if (p.url) { location.href = p.url; return; }         // leaves this page, so the button stays disabled
+    if (p.paid) order.payStatus = 'paid'; else toast((p.error || 'Could not start the payment.') + ' You can pay from My Orders.');
+  }
+  placing = false; $('#place').disabled = false;
   confirmPage(order);
+}
+/* Back from Paystack (?reference=...): ask the server whether the payment really went through, then show the right page. */
+async function payResult(ref) {
+  scrollTo(0, 0);
+  const show = (icon, title, body, btns) => { $('#ckPage').innerHTML = `<div class="steps box" id="steps"></div><div class="box emptycart"><div class="big">${icon}</div><h2>${title}</h2><p>${body}</p>${btns}</div>`; step(3); };
+  const acct = '<a href="account.html#orders" class="btn">View My Orders</a>';
+  show('⏳', 'Confirming your payment…', 'Please wait a moment. Do not close this page.', '');
+  const r = await Orders.verify(ref);
+  if (r.error) return show('⚠️', 'We could not confirm your payment', esc(r.error) + '<br>If money left your account, it will show in My Orders shortly, or contact us with your payment reference: ' + esc(ref), acct);
+  const o = r.order;
+  if (r.state === 'paid') { confirmPage(o); }
+  else if (r.state === 'failed') show('❌', 'Payment not completed', `Order #${o.id} is saved but not paid. You were not charged, or the amount did not match. If money left your account, contact us with order #${o.id}.`, `<button class="btn" id="retryPay">Try paying again</button> ${acct}`);
+  else show('🕒', 'Waiting for your payment', `Order #${o.id} is saved, but we have not received your payment yet. Bank transfers can take a few minutes.`, `<button class="btn" id="retryPay">Pay now</button> ${acct}`);
+  $('#retryPay')?.addEventListener('click', async e => {
+    e.target.disabled = true;
+    const p = await Orders.pay(o.id);
+    if (p.url) location.href = p.url; else { e.target.disabled = false; toast(p.error || 'Could not start the payment.'); }
+  });
 }
 function confirmPage(o) {
   step(5); scrollTo(0, 0);
   const api = MH.mode === 'api';   // real orders: nothing is charged yet, so don't claim a payment happened
-  const payTxt = { card: api ? 'Card payment — pending confirmation' : 'Paid by card', transfer: api ? 'Bank transfer — pending confirmation' : 'Bank transfer — transfer details have been sent to your email', cod: 'Pay on Delivery — have cash or POS ready' }[o.pay];
+  const paid = api && o.payStatus === 'paid', waiting = api && MH.payments ? 'awaiting payment (pay from My Orders)' : 'pending confirmation';
+  const payTxt = paid && o.pay !== 'cod' ? 'Paid online ✔' : { card: api ? 'Card payment — ' + waiting : 'Paid by card', transfer: api ? 'Bank transfer — ' + waiting : 'Bank transfer — transfer details have been sent to your email', cod: 'Pay on Delivery — have cash or POS ready' }[o.pay];
   const eta = { standard: range(2, 4), express: range(1, 2), pickup: bizDay(1) }[o.ship];
   $('#ckPage').innerHTML = `<div class="steps box" id="steps"></div><div class="box emptycart"><div class="big">✅</div><h2>Thank you, your order is placed!</h2>
     <p>Order <b>#${o.id}</b> · ${api ? 'saved to your account under My Orders' : 'confirmation sent to ' + esc(USER.email)}</p>
@@ -114,6 +142,7 @@ $('#note').addEventListener('input', e => $('#cnt').textContent = e.target.value
 $('#cn').addEventListener('input', e => e.target.value = e.target.value.replace(/\D/g, '').slice(0, 19).replace(/(.{4})/g, '$1 ').trim());
 $('#ce').addEventListener('input', e => { let v = e.target.value.replace(/\D/g, '').slice(0, 4); e.target.value = v.length > 2 ? v.slice(0, 2) + '/' + v.slice(2) : v; });
 $('#cv').addEventListener('input', e => e.target.value = e.target.value.replace(/\D/g, ''));
+if (HOSTED) $('#cardForm').innerHTML = '<small class="mut">🔒 After you place the order you will pay on Paystack\'s secure page. We never see or store your card details.</small>';   // no card fields here
 
 document.addEventListener('change', e => {
   const t = e.target;
@@ -151,7 +180,9 @@ $('#addrForm').addEventListener('submit', async e => {
   f.hidden = true; renderAddrs(); renderSummary();
 });
 
-if (!items.length) {
+if (payRef && MH.mode === 'api') {
+  payResult(payRef);                                     // coming back from Paystack: the cart is already empty, so don't show "nothing to check out"
+} else if (!items.length) {
   $('#ckPage').innerHTML = '<div class="box emptycart"><div class="big">🛒</div><h2>Nothing to check out</h2><p>Add items to your cart (and tick them) first.</p><a href="cart.html" class="btn">Go to Cart</a></div>';
 } else {
   step(2); renderAddrs(); renderSummary();

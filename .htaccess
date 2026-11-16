@@ -1,0 +1,23 @@
+# Apache only (ignored by PHP's built-in server and GitHub Pages). Safe defaults for a live server.
+
+# Never serve version control, tests, docs or tooling files
+RedirectMatch 404 /(\.git|\.github|tests|docs|node_modules)(/|$)
+<FilesMatch "^(package(-lock)?\.json|playwright\.config\.js|\.editorconfig|\.gitattributes|\.gitignore)$">
+    Require all denied
+</FilesMatch>
+
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    # Turn this on once HTTPS works (tells browsers to always use it):
+    # Header always set Strict-Transport-Security "max-age=31536000"
+</IfModule>
+
+# Send visitors to HTTPS. Uncomment on the live server once your certificate is installed.
+# <IfModule mod_rewrite.c>
+#     RewriteEngine On
+#     RewriteCond %{HTTPS} !=on
+#     RewriteCond %{HTTP:X-Forwarded-Proto} !https
+#     RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+# </IfModule>
